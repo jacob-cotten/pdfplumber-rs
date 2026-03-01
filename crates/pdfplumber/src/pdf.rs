@@ -287,11 +287,19 @@ impl Pdf {
             let geometry = PageGeometry::new(media_box, None, rotation);
             page_heights.push(geometry.height());
             // Compute the effective page height for the y-flip transform.
-            // Normally this is just media_box.height() (= bottom - top in BBox terms).
-            // For malformed PDFs with inverted MediaBox (e.g. [0 841.68 631 0] where
-            // y0 > y1), we must account for the y-offset: effective = top + |height|.
-            // This matches pdfminer's initial CTM translation (1,0,0,1,-x0,-y0).
-            raw_page_heights.push(media_box.top + media_box.height().abs());
+            //
+            // Python pdfplumber computes: top = (height - char.y1) + mb_top
+            // where mb_top accounts for non-zero MediaBox origins after
+            // pdfminer's initial CTM translate(-x0, -y0). Since Rust does NOT
+            // apply that initial CTM, we fold the offset into raw_page_height:
+            //
+            //   raw_page_height = |height| + top - min(top, bottom)
+            //
+            // - Normal [0 0 612 792]:      |792| + 0 - 0       = 792
+            // - Non-zero origin [0 200 420 585]: |385| + 200 - 200 = 385
+            // - Inverted [0 842 631 0]:    |842| + 842 - 0     = 1684
+            let y_min = media_box.top.min(media_box.bottom);
+            raw_page_heights.push(media_box.height().abs() + media_box.top - y_min);
         }
 
         // Extract document metadata

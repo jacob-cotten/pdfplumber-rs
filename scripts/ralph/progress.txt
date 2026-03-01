@@ -1,10 +1,25 @@
+# Ralph Progress Log
+Started: 2026년  3월  1일 일요일 22시 19분 17초 KST
+
 ## Codebase Patterns
-- **Per-char direction partitioning**: When extracting words from mixed-direction text, partition chars into 4 groups by direction (Ltr/Rtl/Ttb/Btt) before sorting and grouping. Each direction needs different cluster_sort parameters. See `WordExtractor::extract()` and `extract_group()` in `words.rs`.
-- **Char direction set by interpreter**: The `direction` field on `Char` is set by `char_extraction.rs` based on the text rendering matrix (TRM). `trm.b` dominant → Ttb/Btt; `trm.a` dominant → Ltr/Rtl. For rotated pages, `rotate_direction()` in `pdf.rs` further adjusts: 90°: Ltr→Ttb, 180°: Ltr→Rtl, 270°: Ltr→Btt.
-- **Direction-aware line sorting**: `cluster_words_into_lines()` in `layout.rs` sorts words within lines based on majority direction: Rtl lines sort right-to-left (x0 descending), Ltr lines sort left-to-right (x0 ascending).
+
+- **Font encoding resolution chain**: CMap → FontEncoding → CJK encoding → char::from_u32 (interpreter.rs:1036-1073)
+- **Standard font identification**: `standard_fonts::lookup()` matches all 14 standard fonts; `is_standard_latin_font()` excludes Symbol/ZapfDingbats
+- **Font cache population**: `load_font_if_needed()` in interpreter.rs builds `CachedFont` with optional `encoding` field
+- **StandardEncoding table**: Already existed in `pdfplumber-core/src/encoding.rs` as `STANDARD_TABLE` — maps byte codes to Unicode (e.g., 0x27→U+2019 quoteright, 0x60→U+2018 quoteleft)
 
 ---
 
-# Ralph Progress Log - Issue #182: StandardEncoding fallback for Type1 fonts without explicit /Encoding
-Started: 2026년  3월  1일 일요일 22시 19분 16초 KST
+## 2026-03-01 - US-182-1
+- **What was implemented**: StandardEncoding fallback for Type1 fonts without explicit /Encoding. When a standard Latin Type1 font (Helvetica, Times, Courier variants) lacks a /Encoding entry, StandardEncoding is now applied as the implicit base encoding per the PDF spec.
+- **Files changed**:
+  - `crates/pdfplumber-parse/src/interpreter.rs` — Added `is_standard_latin_font()` function and encoding fallback logic in `load_font_if_needed()`. Added 4 unit tests.
+  - `crates/pdfplumber/tests/accuracy_benchmark.rs` — Updated hello_structure.pdf thresholds to chars F1>=0.99, words F1>=0.95.
+  - `scripts/ralph/prd.json` — Marked US-182-1 as passes: true.
+- **Dependencies added**: None
+- **Results**: hello_structure.pdf accuracy improved from chars F1=0.981/words F1=0.889 to chars F1=1.000/words F1=1.000.
+- **Learnings for future iterations:**
+  - The StandardEncoding table was already fully implemented in pdfplumber-core — the missing piece was just the fallback logic in the interpreter.
+  - Symbol and ZapfDingbats must be excluded from StandardEncoding fallback since they have their own built-in encodings.
+  - The `extract_font_encoding()` function returns `None` when no /Encoding entry exists — this is by design (early return with `?`), so the fallback must be applied at the call site.
 ---

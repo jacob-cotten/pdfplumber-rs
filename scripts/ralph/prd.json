@@ -18,7 +18,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Key files: crates/pdfplumber-parse/src/interpreter.rs (extract_font_encoding function, line ~758), crates/pdfplumber-parse/src/standard_fonts.rs. StandardEncoding differs from WinAnsiEncoding at several code points: 0x27 (quoteright vs quotesingle), 0x60 (grave vs quoteleft), 0x91-0x92, etc. The AGL (Adobe Glyph List) maps glyph names to Unicode. Standard 14 fonts: Helvetica(-Bold/-Oblique/-BoldOblique), Times-Roman(-Bold/-Italic/-BoldItalic), Courier(-Bold/-Oblique/-BoldOblique), Symbol, ZapfDingbats."
     },
     {

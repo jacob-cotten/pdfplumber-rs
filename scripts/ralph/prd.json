@@ -46,8 +46,8 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Key file: crates/pdfplumber-parse/src/interpreter.rs (font metrics setup). The /W array has a complex format: it's an array of entries where each entry is either [cid [w1 w2 ...]] (consecutive widths starting at cid) or [cidFirst cidLast w] (same width for range). /DW is the default width (typically 1000). These widths are in 1/1000 of the font's em-square."
+      "passes": true,
+      "notes": "DONE (already implemented). /W and /DW parsing in cid_font.rs parse_w_array(). CidFontMetrics::get_width() used in interpreter.rs for displacement. All CIDFont PDFs show 100% accuracy with correct word grouping. No regression on Type1/TrueType fonts."
     }
   ]
 }

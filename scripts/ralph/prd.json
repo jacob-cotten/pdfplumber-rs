@@ -18,7 +18,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Key file: crates/pdfplumber-parse/src/interpreter.rs (font setup). /Widths is an array of widths for char codes from /FirstChar to /LastChar. The width for code c is Widths[c - FirstChar]. This should override standard font fallback widths. Check interpreter's resolve_char_width() or equivalent function."
     },
     {

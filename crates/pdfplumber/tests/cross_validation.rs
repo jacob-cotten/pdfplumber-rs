@@ -1074,10 +1074,11 @@ cross_validate_ignored!(
     "hello_structure.pdf",
     "chars 37% — tagged PDF TrueType font gap"
 );
-cross_validate_ignored!(
+cross_validate!(
     cv_python_issue_1054,
     "issue-1054-example.pdf",
-    "chars 0% — content stream operator gap"
+    CHAR_THRESHOLD,
+    CHAR_THRESHOLD
 );
 cross_validate_ignored!(
     cv_python_issue_1114_dedupe,
@@ -1231,19 +1232,25 @@ cross_validate!(
 cross_validate_ignored!(
     cv_python_annotations_rot180,
     "annotations-rotated-180.pdf",
-    "PDF parse error — rotation handling"
+    "chars 100% but words 0% — rotation 180 word grouping gap"
 );
 cross_validate_ignored!(
     cv_python_annotations_rot270,
     "annotations-rotated-270.pdf",
-    "PDF parse error — rotation handling"
+    "chars 100% but words 0% — rotation 270 word grouping gap"
 );
-cross_validate_ignored!(
+cross_validate!(
     cv_python_annotations_rot90,
     "annotations-rotated-90.pdf",
-    "PDF parse error — rotation handling"
+    CHAR_THRESHOLD,
+    CHAR_THRESHOLD
 );
-cross_validate_ignored!(cv_python_annotations, "annotations.pdf", "PDF parse error");
+cross_validate!(
+    cv_python_annotations,
+    "annotations.pdf",
+    CHAR_THRESHOLD,
+    CHAR_THRESHOLD
+);
 cross_validate_ignored!(cv_python_issue_1181, "issue-1181.pdf", "PDF parse error");
 cross_validate!(cv_python_issue_297, "issue-297-example.pdf", 1.0, 1.0);
 cross_validate_ignored!(cv_python_issue_848, "issue-848.pdf", "PDF parse error");

@@ -241,11 +241,19 @@ fn parse_font_descriptor(
         .and_then(object_to_f64_opt)
         .unwrap_or(DEFAULT_ASCENT);
 
-    let descent = desc
+    // PDF spec §9.8: Descent "shall be a negative number". Some malformed PDFs
+    // (e.g., annotations.pdf BAAAAA+Arial-BoldMT) store a positive value.
+    // Normalize to negative to match pdfminer/pdfplumber-py behavior.
+    let raw_descent = desc
         .get(b"Descent")
         .ok()
         .and_then(object_to_f64_opt)
         .unwrap_or(DEFAULT_DESCENT);
+    let descent = if raw_descent > 0.0 {
+        -raw_descent
+    } else {
+        raw_descent
+    };
 
     let missing_width = desc
         .get(b"MissingWidth")
@@ -853,5 +861,56 @@ mod tests {
         let metrics = extract_font_metrics(&doc, &font_dict).unwrap();
 
         assert_eq!(metrics.get_width(65), DEFAULT_WIDTH);
+    }
+
+    // ========== US-186-2: Positive Descent normalization ==========
+
+    #[test]
+    fn positive_descent_normalized_to_negative() {
+        // Some PDFs (e.g., annotations.pdf BAAAAA+Arial-BoldMT) have a positive
+        // Descent value in the FontDescriptor, which violates the PDF spec.
+        // The parser should normalize positive Descent to negative.
+        let mut doc = Document::with_version("1.5");
+        let mut font_dict = create_font_dict_with_widths(&mut doc, &[722.0], 65, 65);
+        add_font_descriptor(
+            &mut doc,
+            &mut font_dict,
+            905.0,
+            211.0, // positive — should be -211
+            None,
+            None,
+        );
+
+        let metrics = extract_font_metrics(&doc, &font_dict).unwrap();
+
+        // Descent should be normalized to -211
+        assert!(
+            metrics.descent() < 0.0,
+            "positive Descent should be normalized to negative, got {}",
+            metrics.descent()
+        );
+        assert!((metrics.descent() - (-211.0)).abs() < 1.0);
+    }
+
+    #[test]
+    fn negative_descent_unchanged() {
+        // Normal negative descent should remain unchanged
+        let mut doc = Document::with_version("1.5");
+        let mut font_dict = create_font_dict_with_widths(&mut doc, &[722.0], 65, 65);
+        add_font_descriptor(&mut doc, &mut font_dict, 905.0, -212.0, None, None);
+
+        let metrics = extract_font_metrics(&doc, &font_dict).unwrap();
+        assert!((metrics.descent() - (-212.0)).abs() < 1.0);
+    }
+
+    #[test]
+    fn zero_descent_unchanged() {
+        // Zero descent should remain zero (triggers special handling in interpreter)
+        let mut doc = Document::with_version("1.5");
+        let mut font_dict = create_font_dict_with_widths(&mut doc, &[722.0], 65, 65);
+        add_font_descriptor(&mut doc, &mut font_dict, 0.0, 0.0, None, None);
+
+        let metrics = extract_font_metrics(&doc, &font_dict).unwrap();
+        assert_eq!(metrics.descent(), 0.0);
     }
 }

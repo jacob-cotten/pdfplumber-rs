@@ -291,6 +291,16 @@ impl TextState {
         self.text_matrix = translation.concat(&self.text_matrix);
     }
 
+    /// Advance the text matrix by a vertical displacement (for WMode=1).
+    ///
+    /// Used for CJK vertical writing mode where text advances downward.
+    /// The displacement `ty` is in text space units (typically negative for
+    /// downward advance in PDF bottom-left coordinates).
+    pub fn advance_text_position_vertical(&mut self, ty: f64) {
+        let translation = Ctm::new(1.0, 0.0, 0.0, 1.0, 0.0, ty);
+        self.text_matrix = translation.concat(&self.text_matrix);
+    }
+
     // --- q/Q save/restore (graphics state portion) ---
 
     /// Save the text state parameters that are part of the graphics state.

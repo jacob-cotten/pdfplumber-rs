@@ -1,41 +1,25 @@
 {
   "project": "pdfplumber-rs",
-  "branchName": "ralph/issue-187-font-metrics",
-  "description": "Issue #187: Improve font metrics precision for near-threshold PDFs",
-  "relatedIssue": 187,
+  "branchName": "ralph/issue-188-cjk-vertical",
+  "description": "Issue #188: CJK vertical writing mode support",
+  "relatedIssue": 188,
   "userStories": [
     {
-      "id": "US-187-1",
-      "title": "Extract glyph widths from font descriptors and /Widths arrays",
-      "description": "Many PDFs include per-font /Widths arrays and /FontDescriptor entries with precise glyph metrics. Currently these are not always utilized, causing cumulative x-drift on pages with proportional fonts. Parse /Widths, /FirstChar, /LastChar from font dictionaries and use them for char width calculation.",
+      "id": "US-188-1",
+      "title": "Detect and handle WMode=1 (vertical writing)",
+      "description": "CJK fonts can use vertical writing mode (WMode=1) where text advances vertically instead of horizontally. Detect WMode from CMap or font dictionary and apply vertical glyph metrics (W2/DW2) for text positioning.",
       "acceptanceCriteria": [
-        "Font /Widths arrays are parsed and used when available",
-        "issue-463-example.pdf chars >= 92% (currently 89.4%)",
-        "issue-53-example.pdf chars >= 95%, words >= 93% (currently 94.1%/92.1%)",
-        "issue-982-example.pdf chars >= 88% (currently 85.4%)",
-        "No regression on PDFs already at 100%",
+        "WMode is detected from CMap streams and font dictionaries",
+        "Vertical writing mode uses W2/DW2 metrics for vertical advance",
+        "pdfjs/vertical.pdf chars > 30% (currently 0%)",
+        "pdfbox/pdfbox-3127-vfont-reduced.pdf chars > 10% (currently 0.3%)",
+        "No regression on horizontal-mode CJK PDFs (cjk_mixed.pdf stays at F1=1.0)",
         "cargo test --workspace passes",
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 1,
-      "passes": true,
-      "notes": "Key file: crates/pdfplumber-parse/src/interpreter.rs (font setup). /Widths is an array of widths for char codes from /FirstChar to /LastChar. The width for code c is Widths[c - FirstChar]. This should override standard font fallback widths. Check interpreter's resolve_char_width() or equivalent function."
-    },
-    {
-      "id": "US-187-2",
-      "title": "Improve font descriptor ascent/descent handling",
-      "description": "Some PDFs have vertical coordinate offsets because ascent/descent values from /FontDescriptor are not being used. The parser falls back to default ascent/descent (-250/1000) instead of reading /Ascent and /Descent from the font descriptor. Fix by extracting these values when available.",
-      "acceptanceCriteria": [
-        "Font descriptor /Ascent and /Descent values are used when available",
-        "Vertical coordinate accuracy improves for PDFs with font descriptors",
-        "issue-336-example.pdf chars >= 65% (currently 58.5%)",
-        "No regression on existing PDFs",
-        "cargo test --workspace passes",
-        "cargo clippy --workspace -- -D warnings passes"
-      ],
-      "priority": 2,
-      "passes": true,
-      "notes": "Key file: crates/pdfplumber-parse/src/interpreter.rs. FontDescriptor has /Ascent, /Descent, /CapHeight, /Flags, /FontBBox, /ItalicAngle, /StemV. The ascent/descent affect the top/bottom bbox calculation for each character. Check how char bbox vertical coordinates are computed and where font descriptor values should be injected."
+      "passes": false,
+      "notes": "Key files: crates/pdfplumber-parse/src/interpreter.rs (font setup and text positioning). WMode is found in: 1) CMap definition ('usecmap' or '/WMode' key), 2) Font dictionary /DescendantFonts CIDFont /CIDSystemInfo, 3) Predefined CMap name suffix (-V = vertical, -H = horizontal). W2 array format similar to W but with [cid [w1y v1x v1y ...]] for vertical metrics. DW2 default: [880 -1000]. Depends on #183 (CIDFont support) and #181 (per-char direction)."
     }
   ]
 }

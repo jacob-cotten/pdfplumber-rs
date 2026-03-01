@@ -15,6 +15,7 @@
 
 #![deny(missing_docs)]
 
+pub mod adobe_japan1_ucs2;
 pub mod backend;
 pub mod char_extraction;
 pub mod cid_font;

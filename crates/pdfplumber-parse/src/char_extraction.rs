@@ -52,13 +52,21 @@ pub fn char_from_event(
     let ascent_norm = event.ascent / 1000.0;
     let descent_norm = event.descent / 1000.0;
 
+    // Vertical origin displacement in glyph-normalized space.
+    // For vertical writing (WMode=1), the text position is the vertical origin,
+    // displaced from the horizontal origin by (vx, vy). Shift the bbox
+    // by (-vx/1000, -vy/1000) to position relative to the horizontal origin.
+    let (vx, vy) = event.vertical_origin;
+    let ox = -vx / 1000.0;
+    let oy = -vy / 1000.0;
+
     // Four corners of the character rectangle in glyph-normalized space,
     // transformed through Trm to page space (PDF bottom-left origin).
     let corners = [
-        trm.transform_point(Point::new(0.0, descent_norm)),
-        trm.transform_point(Point::new(w_norm, descent_norm)),
-        trm.transform_point(Point::new(w_norm, ascent_norm)),
-        trm.transform_point(Point::new(0.0, ascent_norm)),
+        trm.transform_point(Point::new(ox, oy + descent_norm)),
+        trm.transform_point(Point::new(ox + w_norm, oy + descent_norm)),
+        trm.transform_point(Point::new(ox + w_norm, oy + ascent_norm)),
+        trm.transform_point(Point::new(ox, oy + ascent_norm)),
     ];
 
     // Axis-aligned bounding box in PDF page space
@@ -146,6 +154,7 @@ mod tests {
             rise: 0.0,
             ascent: 750.0,
             descent: -250.0,
+            vertical_origin: (0.0, 0.0),
             mcid: None,
             tag: None,
         }

@@ -50,6 +50,11 @@ pub struct CharEvent {
     pub ascent: f64,
     /// Font descent in glyph space units (1/1000 of text space, negative below baseline).
     pub descent: f64,
+    /// Vertical origin displacement in glyph space units (1/1000 of text space).
+    /// For vertical writing mode (WMode=1), the glyph is positioned relative to its
+    /// vertical origin, which is displaced from the horizontal origin by (vx, vy).
+    /// (0.0, 0.0) for horizontal text.
+    pub vertical_origin: (f64, f64),
     /// Marked content identifier (MCID) from BDC operator, if inside a marked content sequence.
     pub mcid: Option<u32>,
     /// Structure tag name (e.g., "P", "Span", "H1") from BMC/BDC operator.
@@ -209,6 +214,7 @@ mod tests {
             rise: 0.0,
             ascent: 750.0,
             descent: -250.0,
+            vertical_origin: (0.0, 0.0),
             mcid: None,
             tag: None,
         }

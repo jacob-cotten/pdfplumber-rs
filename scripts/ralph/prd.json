@@ -18,7 +18,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Key structure: /StructTreeRoot → /K (children) → /Type /StructElem entries. Each StructElem has /S (structure type), /K (content items or child elements), /P (parent). Content items reference MCIDs. The cross_validation entries for figure_structure, pdf_structure, hello_structure may just need updating since char extraction already works. Focus on mcid_example.pdf which still fails."
     },
     {

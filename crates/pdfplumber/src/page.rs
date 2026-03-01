@@ -1,5 +1,7 @@
 //! Page type for accessing extracted content from a PDF page.
 
+use std::collections::HashMap;
+
 use pdfplumber_core::{
     Annotation, BBox, Char, ColumnMode, Curve, DedupeOptions, Edge, ExportedImage, ExtractWarning,
     FormField, HtmlOptions, HtmlRenderer, Hyperlink, Image, ImageExportOptions, Line, PageObject,
@@ -348,6 +350,60 @@ impl Page {
             Some(tree) => collect_elements(tree),
             None => Vec::new(),
         }
+    }
+
+    /// Groups characters by their marked content identifier (MCID).
+    ///
+    /// Returns a map from MCID to the characters tagged with that MCID.
+    /// Characters without an MCID are excluded. Each MCID group preserves
+    /// content stream order.
+    ///
+    /// MCIDs link page content to the document's structure tree — use
+    /// [`structure_tree()`](Self::structure_tree) to find the [`StructElement`]
+    /// that owns each MCID.
+    pub fn chars_by_mcid(&self) -> HashMap<u32, Vec<&Char>> {
+        let mut groups: HashMap<u32, Vec<&Char>> = HashMap::new();
+        for c in &self.chars {
+            if let Some(mcid) = c.mcid {
+                groups.entry(mcid).or_default().push(c);
+            }
+        }
+        groups
+    }
+
+    /// Returns characters ordered by the structure tree (semantic reading order).
+    ///
+    /// Traverses the structure tree in depth-first order and collects characters
+    /// matching each element's MCIDs. This gives the document's intended logical
+    /// reading order rather than raw content stream order.
+    ///
+    /// Characters without an MCID are appended at the end. Returns all characters
+    /// in content stream order if no structure tree is available.
+    pub fn semantic_chars(&self) -> Vec<&Char> {
+        let tree = match &self.structure_tree {
+            Some(t) => t,
+            None => return self.chars.iter().collect(),
+        };
+
+        let mcid_groups = self.chars_by_mcid();
+        if mcid_groups.is_empty() {
+            return self.chars.iter().collect();
+        }
+
+        let mut result = Vec::with_capacity(self.chars.len());
+        let mut used_mcids = std::collections::HashSet::new();
+
+        // Walk structure tree depth-first, collecting chars for each MCID
+        collect_chars_by_structure_order(tree, &mcid_groups, &mut result, &mut used_mcids);
+
+        // Append untagged chars (those without MCIDs)
+        for c in &self.chars {
+            if c.mcid.is_none() {
+                result.push(c);
+            }
+        }
+
+        result
     }
 
     /// Returns non-fatal warnings collected during page extraction.
@@ -730,6 +786,27 @@ fn collect_elements(elements: &[StructElement]) -> Vec<&StructElement> {
         result.extend(collect_elements(&elem.children));
     }
     result
+}
+
+/// Walk the structure tree depth-first, collecting chars for each MCID in order.
+fn collect_chars_by_structure_order<'a>(
+    elements: &[StructElement],
+    mcid_groups: &HashMap<u32, Vec<&'a Char>>,
+    result: &mut Vec<&'a Char>,
+    used_mcids: &mut std::collections::HashSet<u32>,
+) {
+    for elem in elements {
+        // Collect chars for this element's MCIDs
+        for &mcid in &elem.mcids {
+            if used_mcids.insert(mcid) {
+                if let Some(chars) = mcid_groups.get(&mcid) {
+                    result.extend(chars);
+                }
+            }
+        }
+        // Recurse into children
+        collect_chars_by_structure_order(&elem.children, mcid_groups, result, used_mcids);
+    }
 }
 
 impl PageData for Page {

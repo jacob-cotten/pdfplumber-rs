@@ -858,6 +858,158 @@ fn pdf_structure_has_list_elements() {
     );
 }
 
+// ==================== MCID-to-Content Mapping: mcid_example.pdf ====================
+
+#[test]
+fn mcid_example_chars_have_mcid_values() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let chars = page.chars();
+    // At least some chars should have MCIDs set from the content stream
+    let tagged_count = chars.iter().filter(|c| c.mcid.is_some()).count();
+    assert!(
+        tagged_count > 0,
+        "mcid_example.pdf chars should have MCID values, but none found among {} chars",
+        chars.len()
+    );
+}
+
+#[test]
+fn mcid_example_chars_by_mcid_returns_groups() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let groups = page.chars_by_mcid();
+    assert!(
+        !groups.is_empty(),
+        "chars_by_mcid() should return non-empty groups for tagged PDF"
+    );
+    // Each group should have at least one char
+    for (mcid, chars) in &groups {
+        assert!(!chars.is_empty(), "MCID {} group should not be empty", mcid);
+        // All chars in the group should have the matching MCID
+        for c in chars {
+            assert_eq!(
+                c.mcid,
+                Some(*mcid),
+                "char '{}' in MCID {} group has wrong mcid {:?}",
+                c.text,
+                mcid,
+                c.mcid
+            );
+        }
+    }
+}
+
+#[test]
+fn mcid_example_chars_by_mcid_covers_all_tagged_chars() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let groups = page.chars_by_mcid();
+    let grouped_count: usize = groups.values().map(|v| v.len()).sum();
+    let tagged_count = page.chars().iter().filter(|c| c.mcid.is_some()).count();
+    assert_eq!(
+        grouped_count, tagged_count,
+        "chars_by_mcid() should cover all tagged chars"
+    );
+}
+
+#[test]
+fn mcid_example_chars_by_mcid_mcids_match_structure_tree() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let groups = page.chars_by_mcid();
+    let tree = page.structure_tree().unwrap();
+    let struct_mcids: std::collections::HashSet<u32> =
+        collect_all_mcids(tree).into_iter().collect();
+    // All MCIDs in chars_by_mcid should exist in the structure tree
+    for mcid in groups.keys() {
+        assert!(
+            struct_mcids.contains(mcid),
+            "MCID {} from chars not found in structure tree",
+            mcid
+        );
+    }
+}
+
+#[test]
+fn mcid_example_semantic_chars_returns_ordered_chars() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let semantic = page.semantic_chars();
+    assert!(
+        !semantic.is_empty(),
+        "semantic_chars() should return non-empty for tagged PDF"
+    );
+}
+
+#[test]
+fn mcid_example_semantic_chars_covers_tagged_chars() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let semantic = page.semantic_chars();
+    let tagged_count = page.chars().iter().filter(|c| c.mcid.is_some()).count();
+    // Semantic chars should include at least all tagged chars
+    assert!(
+        semantic.len() >= tagged_count,
+        "semantic_chars() should include at least all {} tagged chars, got {}",
+        tagged_count,
+        semantic.len()
+    );
+}
+
+#[test]
+fn mcid_example_semantic_chars_follows_structure_order() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let semantic = page.semantic_chars();
+    let tree = page.structure_tree().unwrap();
+
+    // Collect MCIDs in structure tree order (depth-first)
+    let struct_mcid_order = collect_mcid_order(tree);
+
+    // Collect the MCID sequence from semantic_chars (first occurrence of each new MCID)
+    let mut seen_mcids: Vec<u32> = Vec::new();
+    for c in &semantic {
+        if let Some(mcid) = c.mcid {
+            if seen_mcids.last() != Some(&mcid) {
+                seen_mcids.push(mcid);
+            }
+        }
+    }
+
+    // The order of first-seen MCIDs should match the structure tree traversal order
+    // (only for MCIDs that appear in both)
+    let struct_filtered: Vec<u32> = struct_mcid_order
+        .iter()
+        .copied()
+        .filter(|m| seen_mcids.contains(m))
+        .collect();
+    let seen_filtered: Vec<u32> = seen_mcids
+        .iter()
+        .copied()
+        .filter(|m| struct_mcid_order.contains(m))
+        .collect();
+    assert_eq!(
+        seen_filtered, struct_filtered,
+        "semantic_chars() MCID order should match structure tree order"
+    );
+}
+
+#[test]
+fn figure_structure_semantic_chars_returns_chars() {
+    let pdf = open_cv_fixture(&cv_pdf("figure_structure.pdf"));
+    let page = pdf.page(0).unwrap();
+    let semantic = page.semantic_chars();
+    // If the PDF has tagged chars, semantic_chars should return them
+    let tagged_count = page.chars().iter().filter(|c| c.mcid.is_some()).count();
+    if tagged_count > 0 {
+        assert!(
+            !semantic.is_empty(),
+            "semantic_chars() should return chars for tagged PDF with MCID chars"
+        );
+    }
+}
+
 // ==================== Structure Tree: untagged PDF ====================
 
 #[test]
@@ -889,4 +1041,15 @@ fn collect_all_mcids(elements: &[StructElement]) -> Vec<u32> {
         mcids.extend(collect_all_mcids(&elem.children));
     }
     mcids
+}
+
+/// Collect MCIDs in structure tree depth-first traversal order.
+fn collect_mcid_order(elements: &[StructElement]) -> Vec<u32> {
+    let mut order = Vec::new();
+    for elem in elements {
+        // MCIDs on this element come first, then recurse into children
+        order.extend_from_slice(&elem.mcids);
+        order.extend(collect_mcid_order(&elem.children));
+    }
+    order
 }

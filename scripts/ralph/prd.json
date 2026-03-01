@@ -49,8 +49,8 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "These may be fixed by the error recovery from US-186-1. If not, diagnose each individually. Common causes: malformed cross-reference tables, unsupported encryption, corrupted streams."
+      "passes": true,
+      "notes": "issue-1181: non-zero MediaBox y-origin fixed with unified raw_page_height formula. issue-848: Ghostscript preamble and page markers stripped in try_strip_preamble."
     }
   ]
 }

@@ -64,3 +64,22 @@ Started: 2026년  3월  2일 월요일 00시 49분 12초 KST
   - `cid_font.rs` already had Descent normalization; this fix brings `font_metrics.rs` in line.
   - Rotated variants (180°/270°) have word grouping issues unrelated to parsing — chars match at 100%.
 ---
+
+## 2026-03-02 - US-186-3
+- **What was implemented:**
+  1. Unified raw_page_height formula: `|height| + top - min(top, bottom)` handles normal, non-zero origin, and inverted MediaBox.
+  2. Enhanced `try_strip_preamble()` to strip Ghostscript preamble AND "Page N\n" markers before endstream keywords.
+  3. issue-1181.pdf achieves 100% char match on both pages (was 200pt y-offset due to non-zero MediaBox origin).
+  4. issue-848.pdf opens successfully with 8 pages (was 0 pages due to cumulative xref offset errors).
+- **Files changed:**
+  - `crates/pdfplumber/src/pdf.rs` — Unified raw_page_height formula at line ~295
+  - `crates/pdfplumber-parse/src/lopdf_backend.rs` — New `try_strip_preamble()` + 4 unit tests, called in `open()`
+  - `crates/pdfplumber/tests/issue_1181_and_848_robustness.rs` — 5 integration tests
+  - `scripts/ralph/prd.json` — Marked US-186-3 as passes: true
+- **Dependencies added:** None
+- **Learnings for future iterations:**
+  - Python pdfplumber's y-flip: `top = (height - char.y1) + mb_top`. Since Rust doesn't apply pdfminer's initial CTM `translate(-x0, -y0)`, the offset must be folded into raw_page_height.
+  - Ghostscript ps2pdf injects "Page N\n" markers (7 bytes) before each endstream keyword, causing cumulative xref offset errors (+7 per page).
+  - An xref rebuilder approach was tried but had false positives from "N G obj" patterns inside compressed streams. Removing the root cause (page markers) was the correct fix.
+  - Inverted MediaBox (e.g. [0 841.68 631.08 0]) requires raw_page_height = 1684 (double), not 842. The unified formula handles this correctly.
+---

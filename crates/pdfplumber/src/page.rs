@@ -335,6 +335,21 @@ impl Page {
         self.structure_tree.as_deref()
     }
 
+    /// Returns a flattened list of all structure elements for this page.
+    ///
+    /// Unlike [`structure_tree()`](Self::structure_tree) which preserves the tree hierarchy,
+    /// this method returns every element (including nested children) as a flat `Vec`.
+    /// Returns an empty `Vec` for untagged PDFs.
+    ///
+    /// Each [`StructElement`] has an `element_type` (e.g., "H1", "P", "Table"),
+    /// `mcids` linking to characters, and `children` forming a tree hierarchy.
+    pub fn structure_elements(&self) -> Vec<&StructElement> {
+        match &self.structure_tree {
+            Some(tree) => collect_elements(tree),
+            None => Vec::new(),
+        }
+    }
+
     /// Returns non-fatal warnings collected during page extraction.
     ///
     /// Warnings are purely informational and do not affect the correctness
@@ -705,6 +720,16 @@ impl Page {
                     .collect()
             })
     }
+}
+
+/// Recursively collect all structure elements from a tree into a flat list.
+fn collect_elements(elements: &[StructElement]) -> Vec<&StructElement> {
+    let mut result = Vec::new();
+    for elem in elements {
+        result.push(elem);
+        result.extend(collect_elements(&elem.children));
+    }
+    result
 }
 
 impl PageData for Page {

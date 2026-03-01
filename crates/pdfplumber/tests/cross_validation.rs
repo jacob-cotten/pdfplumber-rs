@@ -1063,10 +1063,11 @@ cross_validate_ignored!(
     "extra-attrs-example.pdf",
     "chars 0% — likely CIDFont/ToUnicode mapping gap"
 );
-cross_validate_ignored!(
+cross_validate!(
     cv_python_figure_structure,
     "figure_structure.pdf",
-    "chars 0% — tagged PDF structure not supported"
+    CHAR_THRESHOLD,
+    WORD_THRESHOLD
 );
 cross_validate_ignored!(
     cv_python_hello_structure,
@@ -1166,10 +1167,11 @@ cross_validate_ignored!(
     "malformed-from-issue-932.pdf",
     "chars 0% — malformed PDF content"
 );
-cross_validate_ignored!(
+cross_validate!(
     cv_python_mcid,
     "mcid_example.pdf",
-    "chars 0% — tagged PDF structure not supported"
+    CHAR_THRESHOLD,
+    WORD_THRESHOLD
 );
 /// nics-background-checks-2015-11-rotated.pdf: same content as nics-background-checks-2015-11.pdf
 /// but with /Rotate 90 on the page dictionary. Verifies that page rotation is correctly applied
@@ -1205,10 +1207,11 @@ fn cross_validate_nics_rotated() {
         CHAR_THRESHOLD * 100.0,
     );
 }
-cross_validate_ignored!(
+cross_validate!(
     cv_python_pdf_structure,
     "pdf_structure.pdf",
-    "chars 0% — tagged PDF structure not supported"
+    CHAR_THRESHOLD,
+    WORD_THRESHOLD
 );
 cross_validate!(
     cv_python_senate_expenditures,

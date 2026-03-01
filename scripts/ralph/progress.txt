@@ -1,48 +1,27 @@
 # Ralph Progress Log
-Started: 2026년  3월  1일 일요일 22시 47분 52초 KST
+Started: 2026년  3월  1일 일요일 23시 35분 09초 KST
 ---
 
-## US-183-1: Implement ToUnicode CMap parser
-Status: COMPLETE
+## Codebase Patterns
+- Structure tree parsing already implemented: `extract_document_structure_tree()` in `lopdf_backend.rs` (lines 2227-2519)
+- `StructElement` type in `pdfplumber-core/src/struct_tree.rs` — element_type, mcids, alt_text, actual_text, lang, bbox, children, page_index
+- Page structure tree: `Page::structure_tree()` returns `Option<&[StructElement]>` (hierarchical), `Page::structure_elements()` returns `Vec<&StructElement>` (flat)
+- BMC/BDC/EMC operators tracked in `interpreter.rs` lines 51-84, 532-544; MCID propagated to `CharEvent.mcid` and `Char.mcid`
+- Cross-validation PDFs in `crates/pdfplumber/tests/fixtures/pdfs/`, golden JSON in `crates/pdfplumber/tests/fixtures/golden/`
+- Fixture integration test helpers: `cv_fixtures_dir()`, `cv_pdf()`, `open_cv_fixture()` for accessing cross-validation fixtures
+- pdfplumber-py crate requires Python — exclude with `--exclude pdfplumber-py` for local testing
 
-Changes:
-- cmap.rs: Fixed bfchar/bfrange parsing for concatenated entries (no newlines)
-- cmap.rs: Added parse_cidrange_as_unicode fallback for Identity ToUnicode CMaps
-- cmap.rs: Added identity flag to CMap for full-range Identity cidrange detection
-- cid_font.rs: Fixed positive Descent values in CID font descriptors (negate)
-- interpreter.rs: Added (cid:N) fallback for CID fonts without Unicode mapping
-- interpreter.rs: Respects CMap identity flag to avoid false (cid:N) on Identity CMaps
-- cross_validation.rs: Promoted 8 CID tests from ignored to passing
+---
 
-Results (8 PDFs: 0% → 100%):
-- pdfjs/cid_cff.pdf: 100%
-- pdfjs/issue4875.pdf: 100%
-- pdfjs/issue7696.pdf: 100%
-- pdfjs/issue8570.pdf: 100%
-- pdfjs/issue9262_reduced.pdf: 100%
-- pdfjs/text_clip_cff_cid.pdf: 100%
-- pdfbox/pdfbox-3833-japanese-reduced.pdf: 100%
-- pdfbox/pdfbox-5747-surrogate-diacritic-reduced.pdf: 100%
-
-## US-183-2: Implement predefined CMap support for CJK fonts
-Status: COMPLETE
-
-Changes:
-- cjk_encoding.rs: Added GBKp-EUC, GBK2K, GBpc-EUC variants for Chinese Simplified GBK encoding
-- cross_validation.rs: Promoted issue3521 and pdfbox-5350-korean from ignored to passing
-
-Results:
-- pdfjs/issue3521.pdf (GBKp-EUC-H Chinese): 0% → 100%
-- pdfbox/pdfbox-5350-korean-reduced.pdf: already 100% from US-183-1 (ToUnicode CMap)
-
-## US-183-3: Implement CIDFont width handling (W/DW arrays)
-Status: COMPLETE (already implemented)
-
-The /W and /DW parsing was already implemented in cid_font.rs (parse_w_array).
-CidFontMetrics::get_width() is used in interpreter.rs for char displacement.
-All CIDFont PDFs show 100% accuracy with correct word grouping.
-No regression on Type1/TrueType fonts.
-
-## Summary
-All 3 user stories for issue #183 are COMPLETE.
-Total PDFs improved: 10 (all from 0% to 100%)
+## 2026-03-01 - US-184-1
+- **What was implemented**: Added `Page::structure_elements()` API for flat iteration of structure tree nodes. Upgraded 3 cross-validation tests (mcid_example.pdf, figure_structure.pdf, pdf_structure.pdf) from ignored to passing. Added 11 integration tests for structure tree parsing with real tagged PDFs.
+- **Files changed**:
+  - `crates/pdfplumber/src/page.rs` — added `structure_elements()` method and `collect_elements()` helper
+  - `crates/pdfplumber/tests/fixture_integration.rs` — added 11 structure tree tests + cv helpers
+  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded 3 tests from `cross_validate_ignored!` to `cross_validate!`
+- **Dependencies added**: none
+- **Learnings for future iterations:**
+  - Structure tree parsing was already fully implemented — the "chars 0%" cross-validation failures were stale labels from before font/encoding improvements
+  - All three tagged PDFs (mcid_example, figure_structure, pdf_structure) achieve 100% char and word match rates
+  - The `hello_structure.pdf` remains at 37% due to TrueType font gap (separate issue)
+---

@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use pdfplumber::{Pdf, SearchOptions, Strategy, TableSettings, TextOptions};
+use pdfplumber::{Pdf, SearchOptions, Strategy, StructElement, TableSettings, TextOptions};
 
 // --- Helpers ---
 
@@ -19,6 +19,20 @@ fn generated(name: &str) -> PathBuf {
 
 fn downloaded(name: &str) -> PathBuf {
     fixtures_dir().join("downloaded").join(name)
+}
+
+fn cv_fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+}
+
+fn cv_pdf(name: &str) -> PathBuf {
+    cv_fixtures_dir().join("pdfs").join(name)
+}
+
+fn open_cv_fixture(path: &Path) -> Pdf {
+    Pdf::open_file(path, None).unwrap()
 }
 
 fn open_fixture(path: &Path) -> Pdf {
@@ -708,4 +722,171 @@ fn annotations_rotated_180_opens_successfully() {
 fn annotations_rotated_270_opens_successfully() {
     let pdf = open_fixture(&downloaded("annotations-rotated-270.pdf"));
     assert_eq!(pdf.page_count(), 1);
+}
+
+// ==================== Structure Tree: mcid_example.pdf ====================
+
+#[test]
+fn mcid_example_has_structure_tree() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree();
+    assert!(
+        tree.is_some(),
+        "mcid_example.pdf should have a structure tree"
+    );
+}
+
+#[test]
+fn mcid_example_structure_has_document_root() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree().unwrap();
+    assert!(!tree.is_empty(), "structure tree should not be empty");
+    // Top-level element should be Document
+    assert_eq!(tree[0].element_type, "Document");
+}
+
+#[test]
+fn mcid_example_structure_has_headings_and_paragraphs() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree().unwrap();
+    // Collect all element types recursively
+    let types = collect_element_types(tree);
+    assert!(
+        types.contains(&"H1".to_string()) || types.contains(&"P".to_string()),
+        "mcid_example.pdf should contain H1 or P elements, found: {:?}",
+        types
+    );
+}
+
+#[test]
+fn mcid_example_structure_elements_have_mcids() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree().unwrap();
+    // At least some leaf elements should have MCIDs
+    let all_mcids = collect_all_mcids(tree);
+    assert!(
+        !all_mcids.is_empty(),
+        "structure elements should have MCID references"
+    );
+}
+
+#[test]
+fn mcid_example_structure_elements_api() {
+    let pdf = open_cv_fixture(&cv_pdf("mcid_example.pdf"));
+    let page = pdf.page(0).unwrap();
+    // Test the structure_elements() API (flat list)
+    let elements = page.structure_elements();
+    assert!(
+        !elements.is_empty(),
+        "structure_elements() should return non-empty list for tagged PDF"
+    );
+    // Every element should have a valid element_type
+    for elem in &elements {
+        assert!(
+            !elem.element_type.is_empty(),
+            "each structure element should have a type"
+        );
+    }
+}
+
+// ==================== Structure Tree: figure_structure.pdf ====================
+
+#[test]
+fn figure_structure_has_structure_tree() {
+    let pdf = open_cv_fixture(&cv_pdf("figure_structure.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree();
+    assert!(
+        tree.is_some(),
+        "figure_structure.pdf should have a structure tree"
+    );
+}
+
+#[test]
+fn figure_structure_contains_figure_element() {
+    let pdf = open_cv_fixture(&cv_pdf("figure_structure.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree().unwrap();
+    let types = collect_element_types(tree);
+    assert!(
+        types.contains(&"Figure".to_string()),
+        "figure_structure.pdf should contain Figure elements, found: {:?}",
+        types
+    );
+}
+
+// ==================== Structure Tree: pdf_structure.pdf ====================
+
+#[test]
+fn pdf_structure_has_structure_tree() {
+    let pdf = open_cv_fixture(&cv_pdf("pdf_structure.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree();
+    assert!(
+        tree.is_some(),
+        "pdf_structure.pdf should have a structure tree"
+    );
+}
+
+#[test]
+fn pdf_structure_has_table_element() {
+    let pdf = open_cv_fixture(&cv_pdf("pdf_structure.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree().unwrap();
+    let types = collect_element_types(tree);
+    assert!(
+        types.contains(&"Table".to_string()),
+        "pdf_structure.pdf should contain Table elements, found: {:?}",
+        types
+    );
+}
+
+#[test]
+fn pdf_structure_has_list_elements() {
+    let pdf = open_cv_fixture(&cv_pdf("pdf_structure.pdf"));
+    let page = pdf.page(0).unwrap();
+    let tree = page.structure_tree().unwrap();
+    let types = collect_element_types(tree);
+    assert!(
+        types.contains(&"L".to_string()) || types.contains(&"LI".to_string()),
+        "pdf_structure.pdf should contain list elements (L or LI), found: {:?}",
+        types
+    );
+}
+
+// ==================== Structure Tree: untagged PDF ====================
+
+#[test]
+fn untagged_pdf_has_no_structure_tree() {
+    // basic_text.pdf is a simple generated PDF without structure tags
+    let pdf = open_fixture(&generated("basic_text.pdf"));
+    let page = pdf.page(0).unwrap();
+    assert!(
+        page.structure_tree().is_none(),
+        "untagged PDF should have no structure tree"
+    );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+fn collect_element_types(elements: &[StructElement]) -> Vec<String> {
+    let mut types = Vec::new();
+    for elem in elements {
+        types.push(elem.element_type.clone());
+        types.extend(collect_element_types(&elem.children));
+    }
+    types
+}
+
+fn collect_all_mcids(elements: &[StructElement]) -> Vec<u32> {
+    let mut mcids = Vec::new();
+    for elem in elements {
+        mcids.extend_from_slice(&elem.mcids);
+        mcids.extend(collect_all_mcids(&elem.children));
+    }
+    mcids
 }

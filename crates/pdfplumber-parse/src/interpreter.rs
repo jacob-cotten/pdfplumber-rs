@@ -704,6 +704,17 @@ fn load_font_if_needed(
                     };
                 let base_name = strip_subset_prefix(raw_base_name).to_string();
 
+                // US-182-1: When a standard Type1 font has no explicit /Encoding,
+                // apply StandardEncoding as the implicit base encoding per PDF spec.
+                // Symbol and ZapfDingbats have their own built-in encodings.
+                let encoding = encoding.or_else(|| {
+                    if is_standard_latin_font(&base_name) {
+                        Some(FontEncoding::from_standard(StandardEncoding::Standard))
+                    } else {
+                        None
+                    }
+                });
+
                 (metrics, cmap, base_name, None, false, 0, encoding, None)
             }
         } else {
@@ -801,6 +812,26 @@ fn extract_font_encoding(doc: &lopdf::Document, fd: &lopdf::Dictionary) -> Optio
     }
 
     None
+}
+
+/// Check if a font name is one of the standard 14 Latin fonts (all except
+/// Symbol and ZapfDingbats, which have their own built-in encodings).
+fn is_standard_latin_font(base_name: &str) -> bool {
+    matches!(
+        base_name,
+        "Courier"
+            | "Courier-Bold"
+            | "Courier-Oblique"
+            | "Courier-BoldOblique"
+            | "Helvetica"
+            | "Helvetica-Bold"
+            | "Helvetica-Oblique"
+            | "Helvetica-BoldOblique"
+            | "Times-Roman"
+            | "Times-Bold"
+            | "Times-Italic"
+            | "Times-BoldItalic"
+    )
 }
 
 /// Parse a PDF /Differences array into (code, char) pairs.
@@ -2771,5 +2802,182 @@ mod tests {
         assert_eq!(handler.chars[0].mcid, Some(7));
         assert_eq!(handler.chars[1].tag.as_deref(), Some("P"));
         assert_eq!(handler.chars[1].mcid, Some(7));
+    }
+
+    // --- US-182-1: StandardEncoding fallback for Type1 fonts ---
+
+    /// Create resources with a standard Type1 font (e.g. Helvetica) that has NO
+    /// explicit /Encoding entry.  Per the PDF spec, StandardEncoding should be
+    /// used as the implicit base encoding for such fonts.
+    fn make_standard_type1_font_resources(doc: &mut lopdf::Document) -> lopdf::Dictionary {
+        use lopdf::{Object, dictionary};
+
+        let font_dict = dictionary! {
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Helvetica",
+            // No /Encoding — StandardEncoding should be applied implicitly
+        };
+        let font_id = doc.add_object(Object::Dictionary(font_dict));
+
+        dictionary! {
+            "Font" => Object::Dictionary(dictionary! {
+                "F1" => Object::Reference(font_id),
+            }),
+        }
+    }
+
+    #[test]
+    fn standard_type1_font_uses_standard_encoding_for_0x27() {
+        // Byte 0x27 in StandardEncoding maps to 'quoteright' (U+2019),
+        // NOT ASCII apostrophe (U+0027).
+        let mut doc = lopdf::Document::with_version("1.5");
+        let resources = make_standard_type1_font_resources(&mut doc);
+
+        // Content stream: render byte 0x27 with Helvetica
+        let stream = b"BT /F1 12 Tf (I\x27ll) Tj ET";
+
+        let mut handler = CollectingHandler::new();
+        let mut gstate = InterpreterState::new();
+        let mut tstate = TextState::new();
+
+        interpret_content_stream(
+            &doc,
+            stream,
+            &resources,
+            &mut handler,
+            &default_options(),
+            0,
+            &mut gstate,
+            &mut tstate,
+        )
+        .unwrap();
+
+        assert_eq!(handler.chars.len(), 4); // I, quoteright, l, l
+        // The critical assertion: byte 0x27 must decode to U+2019, not U+0027
+        assert_eq!(
+            handler.chars[1].unicode.as_deref(),
+            Some("\u{2019}"),
+            "byte 0x27 in StandardEncoding should be quoteright (U+2019), got {:?}",
+            handler.chars[1].unicode
+        );
+    }
+
+    #[test]
+    fn standard_type1_font_keeps_ascii_letters_unchanged() {
+        // ASCII letters (0x41-0x5A, 0x61-0x7A) are the same in StandardEncoding
+        // and ASCII, so they should decode normally.
+        let mut doc = lopdf::Document::with_version("1.5");
+        let resources = make_standard_type1_font_resources(&mut doc);
+
+        let stream = b"BT /F1 12 Tf (Hello) Tj ET";
+
+        let mut handler = CollectingHandler::new();
+        let mut gstate = InterpreterState::new();
+        let mut tstate = TextState::new();
+
+        interpret_content_stream(
+            &doc,
+            stream,
+            &resources,
+            &mut handler,
+            &default_options(),
+            0,
+            &mut gstate,
+            &mut tstate,
+        )
+        .unwrap();
+
+        assert_eq!(handler.chars.len(), 5);
+        assert_eq!(handler.chars[0].unicode.as_deref(), Some("H"));
+        assert_eq!(handler.chars[1].unicode.as_deref(), Some("e"));
+        assert_eq!(handler.chars[2].unicode.as_deref(), Some("l"));
+        assert_eq!(handler.chars[3].unicode.as_deref(), Some("l"));
+        assert_eq!(handler.chars[4].unicode.as_deref(), Some("o"));
+    }
+
+    #[test]
+    fn standard_type1_font_0x60_maps_to_quoteleft() {
+        // Byte 0x60 in StandardEncoding maps to 'quoteleft' (U+2018),
+        // NOT grave accent (U+0060).
+        let mut doc = lopdf::Document::with_version("1.5");
+        let resources = make_standard_type1_font_resources(&mut doc);
+
+        let stream = b"BT /F1 12 Tf (\x60) Tj ET";
+
+        let mut handler = CollectingHandler::new();
+        let mut gstate = InterpreterState::new();
+        let mut tstate = TextState::new();
+
+        interpret_content_stream(
+            &doc,
+            stream,
+            &resources,
+            &mut handler,
+            &default_options(),
+            0,
+            &mut gstate,
+            &mut tstate,
+        )
+        .unwrap();
+
+        assert_eq!(handler.chars.len(), 1);
+        assert_eq!(
+            handler.chars[0].unicode.as_deref(),
+            Some("\u{2018}"),
+            "byte 0x60 in StandardEncoding should be quoteleft (U+2018), got {:?}",
+            handler.chars[0].unicode
+        );
+    }
+
+    #[test]
+    fn explicit_encoding_not_overridden_by_standard_fallback() {
+        // When a font has an explicit /Encoding (e.g. WinAnsiEncoding),
+        // it must NOT be overridden by the StandardEncoding fallback.
+        let mut doc = lopdf::Document::with_version("1.5");
+
+        use lopdf::{Object, dictionary};
+
+        let font_dict = dictionary! {
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Helvetica",
+            "Encoding" => "WinAnsiEncoding",
+        };
+        let font_id = doc.add_object(Object::Dictionary(font_dict));
+
+        let resources = dictionary! {
+            "Font" => Object::Dictionary(dictionary! {
+                "F1" => Object::Reference(font_id),
+            }),
+        };
+
+        // Byte 0x27 in WinAnsiEncoding maps to quotesingle (U+0027)
+        let stream = b"BT /F1 12 Tf (\x27) Tj ET";
+
+        let mut handler = CollectingHandler::new();
+        let mut gstate = InterpreterState::new();
+        let mut tstate = TextState::new();
+
+        interpret_content_stream(
+            &doc,
+            stream,
+            &resources,
+            &mut handler,
+            &default_options(),
+            0,
+            &mut gstate,
+            &mut tstate,
+        )
+        .unwrap();
+
+        assert_eq!(handler.chars.len(), 1);
+        // WinAnsiEncoding: 0x27 = quotesingle (U+0027), not quoteright
+        assert_eq!(
+            handler.chars[0].unicode.as_deref(),
+            Some("'"),
+            "WinAnsiEncoding byte 0x27 should be quotesingle (U+0027), got {:?}",
+            handler.chars[0].unicode
+        );
     }
 }

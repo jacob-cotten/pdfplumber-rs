@@ -809,11 +809,16 @@ fn accuracy_hello_structure() {
     let (cf1, wf1) = benchmark_pdf_crate("pdfs", "hello_structure.pdf", "hello_structure")
         .expect("hello_structure.pdf should parse");
     print_text_summary("hello_structure.pdf", &cf1, &wf1);
-    // US-167-1: Char extraction accuracy >90%
+    // US-182-1: StandardEncoding fix brings chars/words to F1=1.0
     assert!(
-        cf1.f1 >= 0.90,
-        "hello_structure chars F1 {:.3} < 0.90",
+        cf1.f1 >= 0.99,
+        "hello_structure chars F1 {:.3} < 0.99",
         cf1.f1
+    );
+    assert!(
+        wf1.f1 >= 0.95,
+        "hello_structure words F1 {:.3} < 0.95",
+        wf1.f1
     );
 }
 

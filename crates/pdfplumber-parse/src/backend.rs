@@ -503,6 +503,7 @@ mod tests {
                 rise: 0.0,
                 ascent: 750.0,
                 descent: -250.0,
+                vertical_origin: (0.0, 0.0),
                 mcid: None,
                 tag: None,
             });

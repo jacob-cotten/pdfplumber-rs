@@ -17,6 +17,12 @@ const DEFAULT_CID_ASCENT: f64 = 880.0;
 /// Default descent for CID fonts when not specified.
 const DEFAULT_CID_DESCENT: f64 = -120.0;
 
+/// Default vertical origin y-component (DW2[0]) per PDF spec.
+const DEFAULT_DW2_VY: f64 = 880.0;
+
+/// Default vertical advance (DW2[1]) per PDF spec.
+const DEFAULT_DW2_W1: f64 = -1000.0;
+
 /// CID font subtype.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CidFontType {
@@ -82,12 +88,25 @@ impl CidSystemInfo {
     }
 }
 
+/// Vertical glyph metrics for a single CID (from /W2 array).
+#[derive(Debug, Clone, Copy)]
+pub struct VerticalMetric {
+    /// Vertical advance (w1y) in glyph space units.
+    pub w1y: f64,
+    /// Horizontal displacement of vertical origin from horizontal origin (vx).
+    pub vx: f64,
+    /// Vertical displacement of vertical origin from horizontal origin (vy).
+    pub vy: f64,
+}
+
 /// Font metrics for a CID font, handling the /W array and /DW default width.
 ///
 /// CID fonts use a different width specification than simple fonts:
 /// - /DW: default width for all CIDs (default 1000)
 /// - /W: array of width overrides in the format:
 ///   `[CID [w1 w2 ...] CIDstart CIDend w ...]`
+/// - /DW2: default vertical metrics [vy, w1] (default [880, -1000])
+/// - /W2: per-CID vertical metric overrides
 #[derive(Debug, Clone)]
 pub struct CidFontMetrics {
     /// Per-CID width overrides (from /W array).
@@ -106,6 +125,12 @@ pub struct CidFontMetrics {
     cid_to_gid: CidToGidMap,
     /// CID system information.
     system_info: Option<CidSystemInfo>,
+    /// Per-CID vertical metric overrides (from /W2 array).
+    vertical_widths: HashMap<u32, VerticalMetric>,
+    /// Default vertical origin y-component (from DW2[0], default 880).
+    default_vy: f64,
+    /// Default vertical advance (from DW2[1], default -1000).
+    default_w1: f64,
 }
 
 impl CidFontMetrics {
@@ -130,6 +155,9 @@ impl CidFontMetrics {
             font_type,
             cid_to_gid,
             system_info,
+            vertical_widths: HashMap::new(),
+            default_vy: DEFAULT_DW2_VY,
+            default_w1: DEFAULT_DW2_W1,
         }
     }
 
@@ -144,6 +172,9 @@ impl CidFontMetrics {
             font_type: CidFontType::Type2,
             cid_to_gid: CidToGidMap::Identity,
             system_info: None,
+            vertical_widths: HashMap::new(),
+            default_vy: DEFAULT_DW2_VY,
+            default_w1: DEFAULT_DW2_W1,
         }
     }
 
@@ -190,6 +221,43 @@ impl CidFontMetrics {
     /// CID system information.
     pub fn system_info(&self) -> Option<&CidSystemInfo> {
         self.system_info.as_ref()
+    }
+
+    /// Get the vertical advance (w1y) for a CID in glyph space.
+    /// Falls back to DW2[1] (default -1000) if no W2 override exists.
+    pub fn get_vertical_w1(&self, cid: u32) -> f64 {
+        self.vertical_widths
+            .get(&cid)
+            .map(|vm| vm.w1y)
+            .unwrap_or(self.default_w1)
+    }
+
+    /// Get the vertical metric for a CID, with fallback to defaults.
+    /// Returns (w1y, vx, vy) where:
+    /// - w1y: vertical advance
+    /// - vx: horizontal displacement of vertical origin (default: DW/2)
+    /// - vy: vertical displacement of vertical origin (default: DW2[0])
+    pub fn get_vertical_metric(&self, cid: u32) -> VerticalMetric {
+        self.vertical_widths
+            .get(&cid)
+            .copied()
+            .unwrap_or(VerticalMetric {
+                w1y: self.default_w1,
+                vx: self.default_width / 2.0,
+                vy: self.default_vy,
+            })
+    }
+
+    /// Set vertical metrics from parsed W2 array and DW2 values.
+    pub fn set_vertical_metrics(
+        &mut self,
+        vertical_widths: HashMap<u32, VerticalMetric>,
+        default_vy: f64,
+        default_w1: f64,
+    ) {
+        self.vertical_widths = vertical_widths;
+        self.default_vy = default_vy;
+        self.default_w1 = default_w1;
     }
 }
 
@@ -250,6 +318,72 @@ pub fn parse_w_array(objects: &[lopdf::Object], doc: &lopdf::Document) -> HashMa
     widths
 }
 
+/// Parse a /W2 (vertical width) array from a CID font dictionary.
+///
+/// The /W2 array format (PDF spec 9.7.4.3):
+/// ```text
+/// [ c [w1y v1x v1y w2y v2x v2y ...] c_first c_last w1y vx vy ... ]
+/// ```
+/// Where each CID gets a `VerticalMetric { w1y, vx, vy }`.
+pub fn parse_w2_array(
+    objects: &[lopdf::Object],
+    doc: &lopdf::Document,
+    default_width: f64,
+) -> HashMap<u32, VerticalMetric> {
+    let mut metrics = HashMap::new();
+    let mut i = 0;
+
+    while i < objects.len() {
+        let cid_start = match object_to_u32(resolve_object(doc, &objects[i])) {
+            Some(v) => v,
+            None => {
+                i += 1;
+                continue;
+            }
+        };
+        i += 1;
+
+        if i >= objects.len() {
+            break;
+        }
+
+        let next = resolve_object(doc, &objects[i]);
+        if let Ok(arr) = next.as_array() {
+            // Format: CID [w1y vx vy w1y vx vy ...]
+            let mut j = 0;
+            let mut cid = cid_start;
+            while j + 2 < arr.len() {
+                let w1y = object_to_f64(resolve_object(doc, &arr[j])).unwrap_or(DEFAULT_DW2_W1);
+                let vx =
+                    object_to_f64(resolve_object(doc, &arr[j + 1])).unwrap_or(default_width / 2.0);
+                let vy = object_to_f64(resolve_object(doc, &arr[j + 2])).unwrap_or(DEFAULT_DW2_VY);
+                metrics.insert(cid, VerticalMetric { w1y, vx, vy });
+                cid += 1;
+                j += 3;
+            }
+            i += 1;
+        } else if let Some(cid_end) = object_to_u32(next) {
+            // Format: CID_start CID_end w1y vx vy
+            i += 1;
+            if i + 2 < objects.len() {
+                let w1y = object_to_f64(resolve_object(doc, &objects[i])).unwrap_or(DEFAULT_DW2_W1);
+                let vx = object_to_f64(resolve_object(doc, &objects[i + 1]))
+                    .unwrap_or(default_width / 2.0);
+                let vy =
+                    object_to_f64(resolve_object(doc, &objects[i + 2])).unwrap_or(DEFAULT_DW2_VY);
+                for cid in cid_start..=cid_end {
+                    metrics.insert(cid, VerticalMetric { w1y, vx, vy });
+                }
+                i += 3;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    metrics
+}
+
 /// Extract CID font metrics from a CIDFont dictionary (descendant of Type0).
 pub fn extract_cid_font_metrics(
     doc: &lopdf::Document,
@@ -291,7 +425,7 @@ pub fn extract_cid_font_metrics(
     // Parse /FontDescriptor for ascent, descent, bbox
     let (ascent, descent, font_bbox) = parse_cid_font_descriptor(doc, cid_font_dict);
 
-    Ok(CidFontMetrics::new(
+    let mut metrics = CidFontMetrics::new(
         widths,
         default_width,
         ascent,
@@ -300,7 +434,37 @@ pub fn extract_cid_font_metrics(
         font_type,
         cid_to_gid,
         system_info,
-    ))
+    );
+
+    // Parse /DW2 (default vertical metrics: [vy, w1])
+    let (dw2_vy, dw2_w1) = cid_font_dict
+        .get(b"DW2")
+        .ok()
+        .map(|o| resolve_object(doc, o))
+        .and_then(|o| o.as_array().ok())
+        .and_then(|arr| {
+            if arr.len() >= 2 {
+                let vy = object_to_f64(resolve_object(doc, &arr[0]))?;
+                let w1 = object_to_f64(resolve_object(doc, &arr[1]))?;
+                Some((vy, w1))
+            } else {
+                None
+            }
+        })
+        .unwrap_or((DEFAULT_DW2_VY, DEFAULT_DW2_W1));
+
+    // Parse /W2 (vertical width overrides)
+    let vertical_widths = cid_font_dict
+        .get(b"W2")
+        .ok()
+        .map(|o| resolve_object(doc, o))
+        .and_then(|o| o.as_array().ok())
+        .map(|arr| parse_w2_array(arr, doc, default_width))
+        .unwrap_or_default();
+
+    metrics.set_vertical_metrics(vertical_widths, dw2_vy, dw2_w1);
+
+    Ok(metrics)
 }
 
 /// Parse the /CIDToGIDMap entry from a CIDFont dictionary.

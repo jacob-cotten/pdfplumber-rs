@@ -966,6 +966,36 @@ fn accuracy_issue_461_example() {
 }
 
 // ---------------------------------------------------------------------------
+// CJK vertical writing mode tests (Issue #188)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn accuracy_pdfjs_vertical() {
+    let (cf1, wf1) = benchmark_pdf_crate("pdfs/pdfjs", "vertical.pdf", "pdfjs/vertical")
+        .expect("vertical.pdf should parse");
+    print_text_summary("vertical.pdf", &cf1, &wf1);
+    // US-188-1: CJK vertical writing mode — chars > 30%
+    assert!(cf1.f1 >= 0.30, "vertical.pdf chars F1 {:.3} < 0.30", cf1.f1);
+}
+
+#[test]
+fn accuracy_pdfbox_3127_vfont() {
+    let (cf1, wf1) = benchmark_pdf_crate(
+        "pdfs/pdfbox",
+        "pdfbox-3127-vfont-reduced.pdf",
+        "pdfbox/pdfbox-3127-vfont-reduced",
+    )
+    .expect("pdfbox-3127-vfont-reduced.pdf should parse");
+    print_text_summary("pdfbox-3127-vfont-reduced.pdf", &cf1, &wf1);
+    // US-188-1: CJK vertical font — chars > 10%
+    assert!(
+        cf1.f1 >= 0.10,
+        "pdfbox-3127-vfont-reduced.pdf chars F1 {:.3} < 0.10",
+        cf1.f1
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Aggregate summary test
 // ---------------------------------------------------------------------------
 

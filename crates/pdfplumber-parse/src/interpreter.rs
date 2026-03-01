@@ -39,7 +39,6 @@ struct CachedFont {
     is_cid_font: bool,
     /// Writing mode: 0 = horizontal, 1 = vertical.
     /// Used in US-041 for vertical writing mode support.
-    #[allow(dead_code)]
     writing_mode: u8,
     /// Font encoding from the /Encoding entry (for simple fonts).
     encoding: Option<FontEncoding>,
@@ -976,6 +975,53 @@ fn show_string_cjk(
     chars
 }
 
+/// Show a CID string in vertical writing mode (WMode=1).
+///
+/// Uses vertical advance (w1y from W2/DW2) instead of horizontal advance.
+/// Text position advances vertically (downward in PDF coordinates).
+fn show_string_cid_vertical(
+    text_state: &mut TextState,
+    string_bytes: &[u8],
+    get_vertical_advance: &dyn Fn(u32) -> f64,
+) -> Vec<crate::text_renderer::RawChar> {
+    let mut chars = Vec::with_capacity(string_bytes.len() / 2);
+    let mut i = 0;
+
+    while i < string_bytes.len() {
+        let char_code = if i + 1 < string_bytes.len() {
+            let code = u32::from(string_bytes[i]) << 8 | u32::from(string_bytes[i + 1]);
+            i += 2;
+            code
+        } else {
+            let code = u32::from(string_bytes[i]);
+            i += 1;
+            code
+        };
+
+        let text_matrix = text_state.text_matrix_array();
+
+        // For vertical mode, use the full em square (1000 glyph units) as the
+        // displacement for bbox width. In vertical writing, the glyph occupies
+        // the full em square horizontally, matching pdfminer's bbox behavior.
+        let displacement = 1000.0;
+        let font_size = text_state.font_size;
+
+        chars.push(crate::text_renderer::RawChar {
+            char_code,
+            displacement,
+            text_matrix,
+        });
+
+        // Vertical advance: ty = (w1y / 1000) * font_size
+        // w1y is typically negative (e.g., -1000), so ty is negative → moves down in PDF coords
+        let w1y = get_vertical_advance(char_code);
+        let ty = (w1y / 1000.0) * font_size;
+        text_state.advance_text_position_vertical(ty);
+    }
+
+    chars
+}
+
 /// TJ operator with CJK-aware byte decoding.
 ///
 /// Like `show_string_with_positioning_mode` but uses CJK variable-length byte
@@ -1011,6 +1057,50 @@ fn show_string_with_positioning_cjk(
     chars
 }
 
+/// TJ operator for vertical writing mode (WMode=1).
+///
+/// Adjustments in TJ arrays affect the vertical position instead of horizontal.
+fn show_string_with_positioning_vertical(
+    text_state: &mut TextState,
+    elements: &[TjElement],
+    get_vertical_advance: &dyn Fn(u32) -> f64,
+) -> Vec<crate::text_renderer::RawChar> {
+    let mut chars = Vec::new();
+
+    for element in elements {
+        match element {
+            TjElement::String(bytes) => {
+                let mut sub_chars =
+                    show_string_cid_vertical(text_state, bytes, get_vertical_advance);
+                chars.append(&mut sub_chars);
+            }
+            TjElement::Adjustment(adj) => {
+                // For vertical mode, TJ adjustments affect the vertical position
+                let font_size = text_state.font_size;
+                let ty = -(adj / 1000.0) * font_size;
+                text_state.advance_text_position_vertical(ty);
+            }
+        }
+    }
+
+    chars
+}
+
+/// Build a vertical advance lookup function for a cached font (WMode=1).
+/// Returns w1y from W2/DW2 metrics.
+fn get_vertical_advance_fn(cached: Option<&CachedFont>) -> Box<dyn Fn(u32) -> f64 + '_> {
+    match cached {
+        Some(cf) if cf.is_cid_font => {
+            if let Some(ref cid_met) = cf.cid_metrics {
+                Box::new(move |code: u32| cid_met.get_vertical_w1(code))
+            } else {
+                Box::new(|_: u32| -1000.0) // default w1
+            }
+        }
+        _ => Box::new(|_: u32| -1000.0), // default w1
+    }
+}
+
 fn handle_tj(
     tstate: &mut TextState,
     gstate: &InterpreterState,
@@ -1026,7 +1116,12 @@ fn handle_tj(
 
     let cached = font_cache.get(&tstate.font_name);
     let width_fn = get_width_fn(cached);
-    let raw_chars = if let Some(enc) = cached.and_then(|c| c.cjk_encoding) {
+    let is_vertical = cached.is_some_and(|c| c.writing_mode == 1);
+
+    let raw_chars = if is_vertical {
+        let vert_fn = get_vertical_advance_fn(cached);
+        show_string_cid_vertical(tstate, string_bytes, &*vert_fn)
+    } else if let Some(enc) = cached.and_then(|c| c.cjk_encoding) {
         show_string_cjk(tstate, string_bytes, &*width_fn, enc)
     } else if cached.is_some_and(|c| c.is_cid_font) {
         show_string_cid(tstate, string_bytes, &*width_fn)
@@ -1070,12 +1165,19 @@ fn handle_tj_array(
 
     let cached = font_cache.get(&tstate.font_name);
     let width_fn = get_width_fn(cached);
-    let cjk_enc = cached.and_then(|c| c.cjk_encoding);
-    let is_cid = cached.is_some_and(|c| c.is_cid_font);
-    let raw_chars = if cjk_enc.is_some() || is_cid {
-        show_string_with_positioning_cjk(tstate, &elements, &*width_fn, cjk_enc)
+    let is_vertical = cached.is_some_and(|c| c.writing_mode == 1);
+
+    let raw_chars = if is_vertical {
+        let vert_fn = get_vertical_advance_fn(cached);
+        show_string_with_positioning_vertical(tstate, &elements, &*vert_fn)
     } else {
-        show_string_with_positioning_mode(tstate, &elements, &*width_fn, false)
+        let cjk_enc = cached.and_then(|c| c.cjk_encoding);
+        let is_cid = cached.is_some_and(|c| c.is_cid_font);
+        if cjk_enc.is_some() || is_cid {
+            show_string_with_positioning_cjk(tstate, &elements, &*width_fn, cjk_enc)
+        } else {
+            show_string_with_positioning_mode(tstate, &elements, &*width_fn, false)
+        }
     };
 
     emit_char_events(
@@ -1135,7 +1237,21 @@ fn emit_char_events(
                 })
             })
             .or_else(|| {
-                // 4. Fallback: for CID fonts with a non-identity ToUnicode CMap
+                // 4. Try Adobe CID→Unicode mapping for CID fonts with known ordering
+                cached.and_then(|c| {
+                    c.cid_metrics.as_ref().and_then(|cm| {
+                        cm.system_info().and_then(|si| match si.ordering.as_str() {
+                            "Japan1" => {
+                                crate::adobe_japan1_ucs2::lookup_japan1_unicode(rc.char_code)
+                                    .map(|ch| ch.to_string())
+                            }
+                            _ => None,
+                        })
+                    })
+                })
+            })
+            .or_else(|| {
+                // 5. Fallback: for CID fonts with a non-identity ToUnicode CMap
                 // that didn't map this code, output (cid:N) matching Python
                 // pdfplumber/pdfminer behavior. For simple fonts or CID fonts
                 // with identity CMap, interpret char_code as Unicode code point.
@@ -1148,14 +1264,20 @@ fn emit_char_events(
                 }
             });
 
-        // Use CID font metrics for displacement if available
-        let displacement = match cached {
-            Some(cf) if cf.is_cid_font => cf
-                .cid_metrics
-                .as_ref()
-                .map_or(600.0, |cm| cm.get_width(rc.char_code)),
-            Some(cf) => cf.metrics.get_width(rc.char_code),
-            None => 600.0,
+        // Use CID font metrics for displacement if available.
+        // For vertical writing mode, use the full em square (1000 glyph units)
+        // as the bbox width, matching pdfminer's vertical text behavior.
+        let displacement = if cached.is_some_and(|c| c.writing_mode == 1) {
+            1000.0
+        } else {
+            match cached {
+                Some(cf) if cf.is_cid_font => cf
+                    .cid_metrics
+                    .as_ref()
+                    .map_or(600.0, |cm| cm.get_width(rc.char_code)),
+                Some(cf) => cf.metrics.get_width(rc.char_code),
+                None => 600.0,
+            }
         };
 
         // Ascent/descent for bounding box calculation.
@@ -1167,6 +1289,12 @@ fn emit_char_events(
         // When both Ascent=0 AND Descent=0 (signals "unknown"), use 1000/0 so
         // bbox spans baseline to baseline+fontsize.
         let (ascent, descent) = match cached {
+            Some(cf) if cf.is_cid_font && cf.writing_mode == 1 => {
+                // Vertical writing mode: use em-square aligned bbox (0, 1000)
+                // to match pdfminer's vertical text behavior where bbox bottom
+                // aligns with the baseline.
+                (1000.0, 0.0)
+            }
             Some(cf) if cf.is_cid_font => {
                 let desc = cf
                     .cid_metrics
@@ -1192,6 +1320,21 @@ fn emit_char_events(
             _ => (750.0, -250.0),
         };
 
+        // Vertical origin displacement for vertical writing mode.
+        // For WMode=1 fonts, the text position is the vertical origin,
+        // displaced from the horizontal origin by (vx, vy) in glyph space.
+        let vertical_origin = if cached.is_some_and(|c| c.writing_mode == 1) {
+            cached
+                .and_then(|c| c.cid_metrics.as_ref())
+                .map(|cm| {
+                    let vm = cm.get_vertical_metric(rc.char_code);
+                    (vm.vx, vm.vy)
+                })
+                .unwrap_or((0.0, 0.0))
+        } else {
+            (0.0, 0.0)
+        };
+
         handler.on_char(CharEvent {
             char_code: rc.char_code,
             unicode,
@@ -1206,6 +1349,7 @@ fn emit_char_events(
             rise: tstate.rise,
             ascent,
             descent,
+            vertical_origin,
             mcid: marked_content_stack.iter().rev().find_map(|mc| mc.mcid),
             tag: marked_content_stack.last().map(|mc| mc.tag.clone()),
         });

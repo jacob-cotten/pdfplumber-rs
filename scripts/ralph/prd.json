@@ -17,7 +17,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Key file: crates/pdfplumber-parse/src/interpreter.rs. The interpreter's main loop matches operator names. Add a catch-all arm that logs and continues instead of returning an error. Check which specific operators cause failures in each affected PDF."
     },
     {

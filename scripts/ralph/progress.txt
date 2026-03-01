@@ -1,25 +1,42 @@
+# Ralph Progress Log
+Started: 2026년  3월  2일 월요일 00시 49분 12초 KST
+
 ## Codebase Patterns
 
-### BiDi Direction vs Physical Direction
-- `Char.direction` can be set by two sources: TRM analysis (physical) or BiDi analysis (semantic)
-- Physical RTL: TRM negative a → chars at descending x0 → cluster_sort descending x0 = correct
-- BiDi RTL: Unicode RTL chars → chars at ascending x0 → cluster_sort needs ascending x0
-- The WordExtractor's cluster_sort detects physical layout direction within RTL clusters using `windows(2).filter(ascending)` heuristic
+### PageGeometry and Coordinate System
+- Python pdfplumber uses **MediaBox** for page dimensions and coordinate transforms, NOT CropBox.
+- The Rust `PageGeometry::new()` should always receive `None` for `crop_box` to match Python behavior.
+- CropBox is stored as page metadata on the `Page` struct but does not affect the coordinate system.
+- PDFs with CropBox ≠ MediaBox (e.g., issue-1054-example.pdf) will produce wrong coordinates if CropBox is used.
 
-### Arabic Diacritical Mark Combining (words.rs)
-- `should_split_horizontal()` checks `is_arabic_diacritic_text()` on both current and previous char
-- If either is a diacritic, never split — diacritics always combine with their base character
-- This is Arabic-specific; general Unicode combining marks (U+0300-U+036F) are NOT combined (matches Python pdfplumber behavior)
-- The `is_arabic_diacritic()` function in `bidi.rs` covers all Arabic combining mark ranges
+### Content Stream Interpreter
+- The interpreter's catch-all arm (`_ => {}`) silently skips unrecognized operators.
+- When the `tracing` feature is enabled on `pdfplumber-parse`, skipped operators emit `tracing::warn!`.
+- The `tracing` crate is an optional dependency behind the `tracing` feature flag.
 
-### Post-processing Pipeline Order (pdf.rs)
-1. char_from_event() — TRM-based direction
-2. rotation correction — rotate_direction()
-3. BiDi analysis — apply_bidi_directions() [NEW]
-4. Unicode normalization — normalize_chars()
+### Cross-Validation Tests
+- Most passing tests have CropBox == MediaBox (or no CropBox), so coordinate changes are safe.
+- `pdfplumber-py` tests fail due to missing Python 3.11 library — pre-existing, unrelated to changes.
 
 ---
 
-# Ralph Progress Log - Issue #186: Improve PDF parser robustness for content stream errors
-Started: 2026년  3월  2일 월요일 00시 49분 10초 KST
+## 2026-03-02 - US-186-1
+- **What was implemented:**
+  1. Fixed coordinate system to use MediaBox (not CropBox) for page dimensions and transforms, matching Python pdfplumber behavior.
+  2. Added optional `tracing` dependency with `tracing` feature flag to `pdfplumber-parse`.
+  3. Changed interpreter catch-all arm to log skipped operators via `tracing::warn!` when the feature is enabled.
+  4. issue-1054-example.pdf now achieves 100% char matching (was 0%).
+- **Files changed:**
+  - `crates/pdfplumber/src/pdf.rs` — Pass `None` for crop_box in PageGeometry::new() at lines 287 and 496
+  - `crates/pdfplumber-parse/src/interpreter.rs` — Added tracing warning for unrecognized operators
+  - `crates/pdfplumber-parse/Cargo.toml` — Added optional `tracing` dependency with feature flag
+  - `crates/pdfplumber-parse/tests/unrecognized_operator_recovery.rs` — New unit tests
+  - `crates/pdfplumber/tests/issue_1054_robustness.rs` — New integration tests
+  - `scripts/ralph/prd.json` — Marked US-186-1 as passes: true
+- **Dependencies added:** `tracing = { version = "0.1", optional = true }` (behind `tracing` feature flag)
+- **Learnings for future iterations:**
+  - The real cause of 0% char matching for issue-1054 was CropBox-based coordinate transforms, not unrecognized operators.
+  - The interpreter already silently ignored unknown operators; the fix was about coordinate accuracy.
+  - All currently passing cross-validation tests have CropBox == MediaBox, so the change is safe.
+  - PDF operator names are alphabetic only (no underscores) — tokenizer splits on non-alpha chars.
 ---

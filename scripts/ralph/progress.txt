@@ -1,7 +1,3 @@
-# Ralph Progress Log
-Started: 2026년  3월  2일 월요일 11시 16분 42초 KST
----
-
 ## Codebase Patterns
 
 ### CID→Unicode Table Pattern
@@ -30,72 +26,6 @@ Started: 2026년  3월  2일 월요일 11시 16분 42초 KST
 
 ---
 
-## 2026-03-02 - US-205-1
-- Implemented Adobe-GB1 (28660 entries), Adobe-CNS1 (18273 entries), Adobe-Korea1 (17094 entries) CID→Unicode tables
-- Generated from adobe-type-tools/cmap-resources (Adobe-GB1-6, Adobe-CNS1-7, Adobe-Korea1-2 cid2code.txt)
-- Files added:
-  - `crates/pdfplumber-parse/src/adobe_gb1_ucs2.rs` (28677 lines)
-  - `crates/pdfplumber-parse/src/adobe_cns1_ucs2.rs` (18290 lines)
-  - `crates/pdfplumber-parse/src/adobe_korea1_ucs2.rs` (17111 lines)
-- Files changed:
-  - `crates/pdfplumber-parse/src/lib.rs` — added module declarations
-  - `crates/pdfplumber-parse/src/interpreter.rs` — wired GB1/CNS1/Korea1 lookups into fallback chain
-  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded issue-842 and issue-987 from ignored to passing
-- Results:
-  - issue-842-example.pdf: 2.3% → 100% chars (target: >=50%)
-  - issue-987-test.pdf: 50% → 100% chars (target: >=80%)
-  - No regressions: 87 cross-validation tests pass, 0 fail
-- Dependencies added: none
-- **Learnings for future iterations:**
-  - The CID→Unicode tables are large but compile efficiently as static arrays
-  - issue-842 uses GB1 ordering (Simplified Chinese with GB2312 font names)
-  - issue-987 uses non-CJK content but had font encoding gaps resolved by better fallback
----
-
-## 2026-03-02 - US-205-2
-- Added EUC-JP and JIS X 0208 encoding decoders for CID fonts with predefined CMaps
-- Fixed `encoding_for_cmap` to recognize EUC-H/EUC-V → EUC-JP and H/V → JIS X 0208
-- JIS X 0208 decoding: convert raw JIS bytes to EUC-JP (add 0x80 to each byte), then decode via encoding_rs::EUC_JP
-- Used `encoding_rs::ISO_2022_JP` as a tag value for raw JIS X 0208 (H/V CMaps)
-- Fixed `parse_predefined_cmap_name` to recognize `EUC` base as Japan1, and `H`/`V` as Japan1 special cases
-- Files changed:
-  - `crates/pdfplumber-parse/src/cjk_encoding.rs` — fixed EUC/JIS CMap matching, added JIS lead byte detection, added `decode_to_unicode` public function
-  - `crates/pdfplumber-parse/src/cid_font.rs` — added H/V and EUC to predefined CMap name parsing
-  - `crates/pdfplumber-parse/src/interpreter.rs` — use `decode_to_unicode` in Unicode resolution step 3
-  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded noembed-eucjp, noembed-jis7, noembed-sjis from ignored to passing
-- Results:
-  - noembed-eucjp.pdf: 0% → 100% chars (target: >=50%)
-  - noembed-jis7.pdf: 58.3% → 100% chars (target: >=80%)
-  - noembed-sjis.pdf: 100% (already passing, no regression)
-  - No regressions on other tests
-- Dependencies added: none
-- **Learnings for future iterations:**
-  - EUC-H CMap = EUC-JP encoding; "EUC" base without JIS/Japan in name IS still Japanese
-  - H/V CMaps = raw JIS X 0208 encoding (bytes 0x21-0x7E for both bytes of a 2-byte code)
-  - JIS→Unicode conversion: add 0x80 to each byte → EUC-JP → decode via encoding_rs
-  - ISO_2022_JP encoding_rs tag works as sentinel for raw JIS since actual ISO-2022-JP (escape sequence variant) doesn't appear in PDF CMaps
----
-
-## 2026-03-02 - US-205-3
-- Fixed Identity-H/V CID fallback: added `is_identity_encoding` field to `CachedFont`
-- In Unicode resolution fallback (step 5), CID fonts with Identity-H/V encoding AND "Identity" ordering now use `char::from_u32(cid)` instead of `(cid:N)` — treats CID as Unicode codepoint
-- Partial ToUnicode support: ToUnicode lookup (step 1) handles mapped CIDs; Identity encoding fallback handles unmapped CIDs
-- For CID fonts with CJK orderings (Japan1/GB1/CNS1/Korea1), the behavior is unchanged: Adobe table lookup → `(cid:N)` for unmapped
-- Upgraded 6 cross-validation tests from `cross_validate_ignored!` to `cross_validate!`:
-  - noembed-identity: 100% chars (was 58.3%)
-  - noembed-identity-2: 75% chars (was 0%)
-  - extra-attrs-example: 100% chars (was 0%)
-  - issue-192-example: 100% chars (was 0.9%)
-  - la-precinct-bulletin: 100% chars (was 0%)
-  - malformed-from-issue-932: 100% chars (was 0%)
-- Files changed:
-  - `crates/pdfplumber-parse/src/interpreter.rs` — added `is_identity_encoding` to CachedFont, updated fallback chain
-  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded 6 ignored tests to asserting tests
-  - `scripts/ralph/prd.json` — set US-205-3 passes: true
-- Dependencies added: none
-- **Learnings for future iterations:**
-  - Most improvements came "for free" from US-205-1/2 (CJK tables + encoding decoders)
-  - noembed-identity-2 still has 3 missing chars (CIDs 247-249) due to incomplete Adobe-Japan1 table (9,628 entries vs pdfminer's 15,117)
-  - Identity-H encoding ≠ Identity ordering: encoding says how to map bytes→CIDs, ordering says what the CID space means
-  - For Identity ordering, CID=Unicode; for CJK orderings, CID→Unicode requires table lookup
+# Ralph Progress Log - Issue #205 Cat5: Character deduplication for overlapping glyphs (3 PDFs)
+Started: 2026년  3월  2일 월요일 12시 15분 55초 KST
 ---

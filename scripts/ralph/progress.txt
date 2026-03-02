@@ -17,7 +17,7 @@ Started: 2026년  3월  2일 월요일 11시 16분 42초 KST
 2. CidToGid + CFF glyph name
 3. Pre-Unicode CMap decoding (encoding_rs) — includes EUC-JP, Shift-JIS, GBK, Big5, EUC-KR, and raw JIS X 0208
 4. Adobe CID→Unicode table (Japan1, GB1, CNS1, Korea1)
-5. Fallback: `(cid:N)` for CID fonts, `char::from_u32` for others
+5. Fallback: Identity-H/V + Identity ordering → `char::from_u32(cid)`; other CID fonts → `(cid:N)`; simple fonts → `char::from_u32`
 
 ### CJK Encoding CMap Name Mapping
 - `GBK-EUC-H/V`, `GBKp-EUC-H/V`, etc. → GBK (encoding_rs::GBK)
@@ -74,4 +74,28 @@ Started: 2026년  3월  2일 월요일 11시 16분 42초 KST
   - H/V CMaps = raw JIS X 0208 encoding (bytes 0x21-0x7E for both bytes of a 2-byte code)
   - JIS→Unicode conversion: add 0x80 to each byte → EUC-JP → decode via encoding_rs
   - ISO_2022_JP encoding_rs tag works as sentinel for raw JIS since actual ISO-2022-JP (escape sequence variant) doesn't appear in PDF CMaps
+---
+
+## 2026-03-02 - US-205-3
+- Fixed Identity-H/V CID fallback: added `is_identity_encoding` field to `CachedFont`
+- In Unicode resolution fallback (step 5), CID fonts with Identity-H/V encoding AND "Identity" ordering now use `char::from_u32(cid)` instead of `(cid:N)` — treats CID as Unicode codepoint
+- Partial ToUnicode support: ToUnicode lookup (step 1) handles mapped CIDs; Identity encoding fallback handles unmapped CIDs
+- For CID fonts with CJK orderings (Japan1/GB1/CNS1/Korea1), the behavior is unchanged: Adobe table lookup → `(cid:N)` for unmapped
+- Upgraded 6 cross-validation tests from `cross_validate_ignored!` to `cross_validate!`:
+  - noembed-identity: 100% chars (was 58.3%)
+  - noembed-identity-2: 75% chars (was 0%)
+  - extra-attrs-example: 100% chars (was 0%)
+  - issue-192-example: 100% chars (was 0.9%)
+  - la-precinct-bulletin: 100% chars (was 0%)
+  - malformed-from-issue-932: 100% chars (was 0%)
+- Files changed:
+  - `crates/pdfplumber-parse/src/interpreter.rs` — added `is_identity_encoding` to CachedFont, updated fallback chain
+  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded 6 ignored tests to asserting tests
+  - `scripts/ralph/prd.json` — set US-205-3 passes: true
+- Dependencies added: none
+- **Learnings for future iterations:**
+  - Most improvements came "for free" from US-205-1/2 (CJK tables + encoding decoders)
+  - noembed-identity-2 still has 3 missing chars (CIDs 247-249) due to incomplete Adobe-Japan1 table (9,628 entries vs pdfminer's 15,117)
+  - Identity-H encoding ≠ Identity ordering: encoding says how to map bytes→CIDs, ordering says what the CID space means
+  - For Identity ordering, CID=Unicode; for CJK orderings, CID→Unicode requires table lookup
 ---

@@ -1065,11 +1065,7 @@ cross_validate!(
 // ─── pdfplumber-python: FAILING tests (below 95% threshold) ──────────────
 
 // 150109DSP, WARN-Report, and chelsea_pdta now have asserting tests above (US-168-1)
-cross_validate_ignored!(
-    cv_python_extra_attrs,
-    "extra-attrs-example.pdf",
-    "chars 0% — likely CIDFont/ToUnicode mapping gap"
-);
+cross_validate!(cv_python_extra_attrs, "extra-attrs-example.pdf", 0.30, 0.30);
 cross_validate!(
     cv_python_figure_structure,
     "figure_structure.pdf",
@@ -1108,11 +1104,7 @@ cross_validate!(
     CHAR_THRESHOLD,
     WORD_THRESHOLD
 );
-cross_validate_ignored!(
-    cv_python_issue_192,
-    "issue-192-example.pdf",
-    "chars 0.9% — CIDFont encoding gap"
-);
+cross_validate!(cv_python_issue_192, "issue-192-example.pdf", 0.50, 0.50);
 cross_validate!(
     cv_python_issue_336,
     "issue-336-example.pdf",
@@ -1161,15 +1153,17 @@ cross_validate!(
     WORD_THRESHOLD
 );
 cross_validate!(cv_python_issue_987, "issue-987-test.pdf", 0.80, 0.05);
-cross_validate_ignored!(
+cross_validate!(
     cv_python_la_precinct,
     "la-precinct-bulletin-2014-p1.pdf",
-    "chars 0% — CIDFont/Type1C gap"
+    0.50,
+    0.50
 );
-cross_validate_ignored!(
+cross_validate!(
     cv_python_malformed_932,
     "malformed-from-issue-932.pdf",
-    "chars 0% — malformed PDF content"
+    0.50,
+    0.50
 );
 cross_validate!(
     cv_python_mcid,
@@ -1318,15 +1312,17 @@ cross_validate!(
     EXTERNAL_CHAR_THRESHOLD,
     EXTERNAL_WORD_THRESHOLD
 );
-cross_validate_ignored!(
+cross_validate!(
     cv_pdfjs_noembed_identity_2,
     "pdfjs/noembed-identity-2.pdf",
-    "chars 0% — Identity encoding gap"
+    0.50,
+    0.0
 );
-cross_validate_ignored!(
+cross_validate!(
     cv_pdfjs_noembed_identity,
     "pdfjs/noembed-identity.pdf",
-    "chars 58.3% — Identity encoding partial gap"
+    EXTERNAL_CHAR_THRESHOLD,
+    EXTERNAL_WORD_THRESHOLD
 );
 cross_validate!(
     cv_pdfjs_noembed_jis7,

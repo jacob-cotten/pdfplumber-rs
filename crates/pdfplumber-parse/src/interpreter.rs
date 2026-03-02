@@ -45,6 +45,10 @@ struct CachedFont {
     /// CJK encoding for predefined CMap encodings (e.g., GBK-EUC-H).
     /// When present, used for variable-length byte decoding and Unicode conversion.
     cjk_encoding: Option<&'static encoding_rs::Encoding>,
+    /// Whether the font uses Identity-H or Identity-V encoding CMap.
+    /// When true and CIDSystemInfo ordering is "Identity", CID values
+    /// are treated as Unicode codepoints in the fallback chain.
+    is_identity_encoding: bool,
 }
 
 /// Entry on the marked content stack, tracking BMC/BDC nesting.
@@ -631,31 +635,85 @@ fn load_font_if_needed(
         font_obj.as_dict().ok()
     })();
 
-    let (metrics, cmap, base_name, cid_metrics, is_cid_font, writing_mode, encoding, cjk_enc) =
-        if let Some(fd) = font_dict {
-            if is_type0_font(fd) {
-                // Type0 (composite/CID) font
-                let (cid_met, wm) = load_cid_font(doc, fd);
+    let (
+        metrics,
+        cmap,
+        base_name,
+        cid_metrics,
+        is_cid_font,
+        writing_mode,
+        encoding,
+        cjk_enc,
+        is_identity_enc,
+    ) = if let Some(fd) = font_dict {
+        if is_type0_font(fd) {
+            // Type0 (composite/CID) font
+            let (cid_met, wm) = load_cid_font(doc, fd);
 
-                // Detect CJK encoding from predefined CMap name
-                let cjk_enc = get_type0_encoding(fd)
-                    .and_then(|enc_name| cjk_encoding::encoding_for_cmap(&enc_name));
-                let metrics = if let Some(ref cm) = cid_met {
-                    // Create a FontMetrics from CID font data for backward compat
-                    FontMetrics::new(
-                        Vec::new(),
-                        0,
-                        0,
-                        cm.default_width(),
-                        cm.ascent(),
-                        cm.descent(),
-                        cm.font_bbox(),
-                    )
+            // Detect CJK encoding and Identity-H/V from predefined CMap name
+            let enc_name = get_type0_encoding(fd);
+            let is_identity_enc = enc_name
+                .as_deref()
+                .is_some_and(|n| n == "Identity-H" || n == "Identity-V");
+            let cjk_enc = enc_name.and_then(|enc_name| cjk_encoding::encoding_for_cmap(&enc_name));
+            let metrics = if let Some(ref cm) = cid_met {
+                // Create a FontMetrics from CID font data for backward compat
+                FontMetrics::new(
+                    Vec::new(),
+                    0,
+                    0,
+                    cm.default_width(),
+                    cm.ascent(),
+                    cm.descent(),
+                    cm.font_bbox(),
+                )
+            } else {
+                if options.collect_warnings {
+                    handler.on_warning(
+                        ExtractWarning::with_operator_context(
+                            "CID font metrics not available, using defaults",
+                            op_index,
+                            font_name,
+                        )
+                        .set_code(ExtractWarningCode::MissingFont),
+                    );
+                }
+                FontMetrics::default_metrics()
+            };
+
+            // Extract ToUnicode CMap if present
+            let cmap = extract_tounicode_cmap(doc, fd);
+
+            let raw_base_name_owned;
+            let raw_base_name =
+                if let Some(n) = fd.get(b"BaseFont").ok().and_then(|o| o.as_name().ok()) {
+                    raw_base_name_owned = String::from_utf8_lossy(n).into_owned();
+                    raw_base_name_owned.as_str()
                 } else {
+                    font_name
+                };
+            let base_name = strip_subset_prefix(raw_base_name).to_string();
+
+            (
+                metrics,
+                cmap,
+                base_name,
+                cid_met,
+                true,
+                wm,
+                None,
+                cjk_enc,
+                is_identity_enc,
+            )
+        } else {
+            // Simple font
+            let metrics = match extract_font_metrics(doc, fd) {
+                Ok(m) => m,
+                Err(_) => {
                     if options.collect_warnings {
                         handler.on_warning(
                             ExtractWarning::with_operator_context(
-                                "CID font metrics not available, using defaults",
+                                "failed to extract font metrics, using defaults",
                                 op_index,
                                 font_name,
                             )
@@ -663,118 +721,89 @@ fn load_font_if_needed(
                         );
                     }
                     FontMetrics::default_metrics()
+                }
+            };
+            let cmap = extract_tounicode_cmap(doc, fd);
+            let encoding = extract_font_encoding(doc, fd);
+            let raw_base_name_owned;
+            let raw_base_name =
+                if let Some(n) = fd.get(b"BaseFont").ok().and_then(|o| o.as_name().ok()) {
+                    raw_base_name_owned = String::from_utf8_lossy(n).into_owned();
+                    raw_base_name_owned.as_str()
+                } else {
+                    font_name
                 };
+            let base_name = strip_subset_prefix(raw_base_name).to_string();
 
-                // Extract ToUnicode CMap if present
-                let cmap = extract_tounicode_cmap(doc, fd);
+            // US-182-1: When a standard Type1 font has no explicit /Encoding,
+            // apply StandardEncoding as the implicit base encoding per PDF spec.
+            // Symbol and ZapfDingbats have their own built-in encodings.
+            let encoding = encoding.or_else(|| {
+                if is_standard_latin_font(&base_name) {
+                    Some(FontEncoding::from_standard(StandardEncoding::Standard))
+                } else {
+                    None
+                }
+            });
 
-                let raw_base_name_owned;
-                let raw_base_name =
-                    if let Some(n) = fd.get(b"BaseFont").ok().and_then(|o| o.as_name().ok()) {
-                        raw_base_name_owned = String::from_utf8_lossy(n).into_owned();
-                        raw_base_name_owned.as_str()
-                    } else {
-                        font_name
-                    };
-                let base_name = strip_subset_prefix(raw_base_name).to_string();
-
-                (metrics, cmap, base_name, cid_met, true, wm, None, cjk_enc)
-            } else {
-                // Simple font
-                let metrics = match extract_font_metrics(doc, fd) {
-                    Ok(m) => m,
-                    Err(_) => {
-                        if options.collect_warnings {
-                            handler.on_warning(
-                                ExtractWarning::with_operator_context(
-                                    "failed to extract font metrics, using defaults",
-                                    op_index,
-                                    font_name,
-                                )
-                                .set_code(ExtractWarningCode::MissingFont),
-                            );
-                        }
-                        FontMetrics::default_metrics()
-                    }
-                };
-                let cmap = extract_tounicode_cmap(doc, fd);
-                let encoding = extract_font_encoding(doc, fd);
-                let raw_base_name_owned;
-                let raw_base_name =
-                    if let Some(n) = fd.get(b"BaseFont").ok().and_then(|o| o.as_name().ok()) {
-                        raw_base_name_owned = String::from_utf8_lossy(n).into_owned();
-                        raw_base_name_owned.as_str()
-                    } else {
-                        font_name
-                    };
-                let base_name = strip_subset_prefix(raw_base_name).to_string();
-
-                // US-182-1: When a standard Type1 font has no explicit /Encoding,
-                // apply StandardEncoding as the implicit base encoding per PDF spec.
-                // Symbol and ZapfDingbats have their own built-in encodings.
-                let encoding = encoding.or_else(|| {
-                    if is_standard_latin_font(&base_name) {
-                        Some(FontEncoding::from_standard(StandardEncoding::Standard))
-                    } else {
-                        None
-                    }
-                });
-
-                // US-182-2: When a standard font has no /Widths array, the fallback
-                // widths from standard_fonts.rs are indexed by WinAnsiEncoding. If the
-                // active encoding differs (e.g., StandardEncoding), remap widths so each
-                // code position gets the correct glyph width for the active encoding.
-                let metrics = if fd.get(b"Widths").is_err() {
-                    if let Some(ref enc) = encoding {
-                        if let Some(remapped) =
-                            crate::standard_fonts::build_remapped_widths(&base_name, |code| {
-                                enc.decode(code)
-                            })
-                        {
-                            FontMetrics::new(
-                                remapped,
-                                0,
-                                255,
-                                metrics.missing_width(),
-                                metrics.ascent(),
-                                metrics.descent(),
-                                metrics.font_bbox(),
-                            )
-                        } else {
-                            metrics
-                        }
+            // US-182-2: When a standard font has no /Widths array, the fallback
+            // widths from standard_fonts.rs are indexed by WinAnsiEncoding. If the
+            // active encoding differs (e.g., StandardEncoding), remap widths so each
+            // code position gets the correct glyph width for the active encoding.
+            let metrics = if fd.get(b"Widths").is_err() {
+                if let Some(ref enc) = encoding {
+                    if let Some(remapped) =
+                        crate::standard_fonts::build_remapped_widths(&base_name, |code| {
+                            enc.decode(code)
+                        })
+                    {
+                        FontMetrics::new(
+                            remapped,
+                            0,
+                            255,
+                            metrics.missing_width(),
+                            metrics.ascent(),
+                            metrics.descent(),
+                            metrics.font_bbox(),
+                        )
                     } else {
                         metrics
                     }
                 } else {
                     metrics
-                };
+                }
+            } else {
+                metrics
+            };
 
-                (metrics, cmap, base_name, None, false, 0, encoding, None)
-            }
-        } else {
-            // Font not found in page resources — use defaults
-            if options.collect_warnings {
-                handler.on_warning(
-                    ExtractWarning::with_operator_context(
-                        "font not found in page resources, using defaults",
-                        op_index,
-                        font_name,
-                    )
-                    .set_code(ExtractWarningCode::MissingFont),
-                );
-            }
             (
-                FontMetrics::default_metrics(),
-                None,
-                font_name.to_string(),
-                None,
-                false,
-                0,
-                None,
-                None,
+                metrics, cmap, base_name, None, false, 0, encoding, None, false,
             )
-        };
+        }
+    } else {
+        // Font not found in page resources — use defaults
+        if options.collect_warnings {
+            handler.on_warning(
+                ExtractWarning::with_operator_context(
+                    "font not found in page resources, using defaults",
+                    op_index,
+                    font_name,
+                )
+                .set_code(ExtractWarningCode::MissingFont),
+            );
+        }
+        (
+            FontMetrics::default_metrics(),
+            None,
+            font_name.to_string(),
+            None,
+            false,
+            0,
+            None,
+            None,
+            false,
+        )
+    };
 
     cache.insert(
         font_name.to_string(),
@@ -787,6 +816,7 @@ fn load_font_if_needed(
             writing_mode,
             encoding,
             cjk_encoding: cjk_enc,
+            is_identity_encoding: is_identity_enc,
         },
     );
 }
@@ -1258,15 +1288,28 @@ fn emit_char_events(
                 })
             })
             .or_else(|| {
-                // 5. Fallback: for CID fonts with a non-identity ToUnicode CMap
-                // that didn't map this code, output (cid:N) matching Python
-                // pdfplumber/pdfminer behavior. For simple fonts or CID fonts
-                // with identity CMap, interpret char_code as Unicode code point.
-                if cached.is_some_and(|c| {
-                    c.is_cid_font && !c.cmap.as_ref().is_some_and(|cm| cm.is_identity())
-                }) {
-                    Some(format!("(cid:{})", rc.char_code))
+                // 5. Fallback: determine whether to treat char_code as Unicode
+                // or output (cid:N) for unmapped CID font characters.
+                if cached.is_some_and(|c| c.is_cid_font) {
+                    // For CID fonts, check if Identity fallback applies:
+                    // - ToUnicode CMap is explicitly Identity (full-range), OR
+                    // - Encoding is Identity-H/V AND CIDSystemInfo ordering is
+                    //   "Identity" (not a CJK collection), meaning CID = Unicode.
+                    let identity_fallback = cached.is_some_and(|c| {
+                        c.cmap.as_ref().is_some_and(|cm| cm.is_identity())
+                            || (c.is_identity_encoding
+                                && c.cid_metrics
+                                    .as_ref()
+                                    .and_then(|cm| cm.system_info())
+                                    .is_none_or(|si| si.ordering == "Identity"))
+                    });
+                    if identity_fallback {
+                        char::from_u32(rc.char_code).map(|ch| ch.to_string())
+                    } else {
+                        Some(format!("(cid:{})", rc.char_code))
+                    }
                 } else {
+                    // Simple fonts: interpret char_code as Unicode code point.
                     char::from_u32(rc.char_code).map(|ch| ch.to_string())
                 }
             });

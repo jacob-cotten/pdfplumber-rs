@@ -56,7 +56,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Key files: crates/pdfplumber-parse/src/cmap.rs, crates/pdfplumber-parse/src/cid_font.rs. For Identity-H encoding, CID values often directly correspond to Unicode codepoints. When ToUnicode is partial, use it for mapped ranges and fall back to CID=Unicode for unmapped ranges. Also handle la-precinct-bulletin-2014-p1.pdf (Type1C/CFF font) and malformed-from-issue-932.pdf (malformed operators) - these may need CFF font parsing and better content stream error recovery respectively."
     }
   ]

@@ -1,15 +1,35 @@
+# Ralph Progress Log
+Started: 2026년  3월  2일 월요일 13시 55분 26초 KST
+---
+
 ## Codebase Patterns
-- TrueType font data is accessed via /FontDescriptor → /FontFile2 stream, decompressed with `stream.decompressed_content()` when Filter is present
-- CFF/Type1C font data is accessed via /FontDescriptor → /FontFile3 stream (Subtype=Type1C or CIDFontType0C)
-- Font metrics fallback chain: /Widths array → standard font fallback → TrueType hmtx → CFF CharStrings → default width
-- TrueType binary data is big-endian; use `u16::from_be_bytes()` / `u32::from_be_bytes()` for reading
-- CFF uses DICT encoding: operands (32-254 ranges) precede operators (0-21); INDEX structures for arrays
-- CFF width extraction: parse Top DICT for CharStrings/Private offsets → Private DICT for defaultWidthX/nominalWidthX → CharStrings for per-glyph width
-- Units per em scaling: `raw_width * 1000.0 / units_per_em` converts to PDF glyph space (1/1000 of text space)
-- Tests build synthetic font data using `build_test_truetype_data()` / `build_cff_data_for_test()` helpers
+
+### Content Stream Error Recovery
+- `tokenize()` is strict (returns `Err` on malformed tokens)
+- `tokenize_lenient()` recovers by saving position before each token, catching errors, resetting position to `saved_pos + 1`, and continuing
+- Failed parse functions (e.g., `parse_literal_string`) may advance `pos` to EOF before returning error; always reset to `saved_pos + 1` for robust recovery
+- Operand stack is cleared on error to prevent partial state corruption
+- Interpreter uses `tokenize_lenient()` and emits `ExtractWarning` with `MalformedObject` code for each recovery
+- `Do` operator errors are caught except for recursion depth limits (resource limits must propagate)
 
 ---
 
-# Ralph Progress Log - Issue #205 Cat8: Content stream error recovery for malformed PDFs (2 PDFs)
-Started: 2026년  3월  2일 월요일 13시 55분 26초 KST
+## 2026-03-02 - US-205-9
+- Implemented `tokenize_lenient()` in `tokenizer.rs`: error-recovering tokenizer that skips malformed tokens and continues
+- Updated `interpret_content_stream()` in `interpreter.rs` to use `tokenize_lenient()` instead of strict `tokenize()`
+- Changed `Do` operator error handling: catches and emits warnings for malformed XObject errors, but preserves recursion depth limit propagation
+- Emits `ExtractWarning::with_code(MalformedObject, ...)` for tokenizer recovery and Do failures
+- Added tracing support (`#[cfg(feature = "tracing")]`) for recovered errors
+- Exported `tokenize_lenient` from `lib.rs`
+- Files changed:
+  - `crates/pdfplumber-parse/src/tokenizer.rs` — added `tokenize_lenient()` + 10 tests
+  - `crates/pdfplumber-parse/src/interpreter.rs` — switched to lenient tokenizer, graceful Do error handling
+  - `crates/pdfplumber-parse/src/lib.rs` — export `tokenize_lenient`
+  - `scripts/ralph/prd.json` — marked US-205-9 passes: true
+- Dependencies added: none
+- **Learnings for future iterations:**
+  - Failed parsers may consume arbitrary input before returning error — always reset position on error
+  - Resource limit errors (recursion depth) should propagate, not be swallowed by error recovery
+  - The `matches!` macro with guard clauses is useful for selective error propagation
+  - All existing integration tests pass — error recovery is backwards-compatible
 ---

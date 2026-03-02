@@ -19,7 +19,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Key files: crates/pdfplumber-parse/src/interpreter.rs (content stream execution), crates/pdfplumber-parse/src/content_stream.rs (tokenization). The parser should catch errors at the operator level and skip to the next recognizable operator. Common malformed patterns: unexpected '<<' in content stream, invalid operand types, unknown operators, truncated streams. Implement a try-recover loop: try parsing next operator, on error skip bytes until next recognizable operator token. Python pdfplumber (via pdfminer) handles this by silently ignoring unknown operators."
     }
   ]

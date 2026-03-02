@@ -1,21 +1,35 @@
+# Ralph Progress Log
+Started: 2026년  3월  2일 월요일 13시 20분 18초 KST
+---
+
 ## Codebase Patterns
-
-### Word grouping direction handling
-- WordExtractor merges horizontal (Ltr + Rtl) and vertical (Ttb + Btt) chars separately
-- Horizontal chars always use spatial LTR sorting (ascending x0) matching Python pdfplumber
-- Vertical chars always use spatial TTB sorting (ascending top) matching Python pdfplumber
-- Per-char direction from TRM determines horizontal vs vertical grouping, NOT reading order
-- Python pdfplumber separates by `upright` flag: upright=true → horizontal, upright=false → vertical
-
-### Rotation and direction mapping
-- 0° rotation: direction=Ltr, upright=true
-- 90° rotation: direction=Ttb (|b|>|a|, b<0), upright=false
-- 180° rotation: direction=Rtl (a<0), upright=true
-- 270° rotation: direction=Btt (|b|>|a|, b>0), upright=false
-- Direction determined in char_extraction.rs from Text Rendering Matrix (TRM)
+- TrueType font data is accessed via /FontDescriptor → /FontFile2 stream, decompressed with `stream.decompressed_content()` when Filter is present
+- Font metrics fallback chain: /Widths array → standard font fallback → TrueType hmtx → default width
+- TrueType binary data is big-endian; use `u16::from_be_bytes()` / `u32::from_be_bytes()` for reading
+- Units per em scaling: `raw_width * 1000.0 / units_per_em` converts to PDF glyph space (1/1000 of text space)
+- Tests build synthetic TrueType data using `build_test_truetype_data()` helper for controlled unit tests
 
 ---
 
-# Ralph Progress Log - Issue #205 Cat4: TrueType and CFF font metrics from embedded fonts (3 PDFs)
-Started: 2026년  3월  2일 월요일 13시 20분 17초 KST
+## 2026-03-02 - US-205-7
+- What was implemented:
+  - New `truetype.rs` module with minimal TrueType font table parsing (head, hhea, maxp, hmtx)
+  - `parse_truetype_widths()` extracts per-glyph advance widths from raw TrueType data
+  - `TrueTypeWidths` struct scales widths to 1000 upem (PDF glyph space convention)
+  - `try_extract_truetype_widths()` in font_metrics.rs accesses /FontFile2 streams
+  - Fallback chain: /Widths → standard fonts → TrueType hmtx → default width
+- Files changed:
+  - `crates/pdfplumber-parse/src/truetype.rs` (NEW) — TrueType table parser
+  - `crates/pdfplumber-parse/src/font_metrics.rs` — Integration with TrueType fallback
+  - `crates/pdfplumber-parse/src/lib.rs` — Module registration
+- Dependencies added: None
+- Test results: 20 new tests (13 truetype + 7 font_metrics integration), all passing
+- Benchmark results: hello_structure.pdf F1=1.000, multi_font.pdf F1=1.000 (both already at 1.0 from prior work)
+- **Learnings for future iterations:**
+  - hello_structure.pdf and multi_font.pdf were already at F1=1.0 before this change (standard font fallback + previous fixes sufficient for those specific PDFs)
+  - The TrueType fallback is needed for non-standard TrueType fonts that don't have /Widths arrays and aren't one of the 14 standard Type1 fonts
+  - TrueType table directory parsing is straightforward: 12-byte offset table + 16-byte records per table
+  - The `tag` field in TableRecord was unused after lookup — removed to avoid dead_code warning
+  - Rust 2024 edition doesn't allow `ref mut` in implicitly-borrowing pattern matches
+  - pdfplumber-py tests fail with dyld libpython3.11 not found — exclude from local testing
 ---

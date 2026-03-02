@@ -18,7 +18,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Key files: crates/pdfplumber-core/src/words.rs (WordExtractor), crates/pdfplumber-core/src/text.rs (TextDirection). For 180° rotation, chars advance right-to-left and bottom-to-top. For 270° rotation, chars advance bottom-to-top. The WordExtractor should group chars by TextDirection and apply appropriate sort order for each direction. Python pdfplumber handles this via text_direction parameter in word extraction. Check how per-char direction (issue #181) interacts with word grouping."
     },
     {

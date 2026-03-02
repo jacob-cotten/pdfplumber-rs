@@ -661,9 +661,18 @@ fn accuracy_rotated_pages() {
     let (cf1, wf1) = benchmark_pdf("generated", "rotated_pages.pdf", "rotated_pages")
         .expect("rotated_pages.pdf should parse");
     print_text_summary("rotated_pages.pdf", &cf1, &wf1);
-    // Measured: chars F1=0.241 (improved from ~0.01)
-    // Rotation coordinate transform differences remain a known gap. PRD target: >= 0.95
-    // No assertion — rotation handling needs dedicated fix
+    // Measured: chars F1=1.000, words F1=1.000
+    // Rotation coordinate transforms now match Python pdfplumber golden data.
+    assert!(
+        cf1.f1 >= 0.80,
+        "rotated_pages chars F1 {:.3} < 0.80",
+        cf1.f1
+    );
+    assert!(
+        wf1.f1 >= 0.80,
+        "rotated_pages words F1 {:.3} < 0.80",
+        wf1.f1
+    );
 }
 
 #[test]

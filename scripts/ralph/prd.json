@@ -34,7 +34,7 @@
         "cargo clippy --workspace -- -D warnings passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Key files: crates/pdfplumber-parse/src/interpreter.rs (CTM), crates/pdfplumber/src/page.rs. The /Rotate value in the page dictionary should pre-multiply the initial CTM before interpreting content streams. Rotation angles: 90° = [0 1 -1 0 w 0], 180° = [-1 0 0 -1 w h], 270° = [0 -1 1 0 0 h] where w/h are page dimensions. Compare Rust char coordinates vs Python golden data for rotated_pages.pdf to identify the exact transform error."
     }
   ]

@@ -1,101 +1,24 @@
 # Ralph Progress Log
-Started: 2026년  3월  2일 월요일 11시 16분 42초 KST
----
+Started: 2026년  3월  2일 월요일 12시 15분 56초 KST
 
 ## Codebase Patterns
-
-### CID→Unicode Table Pattern
-- Tables are stored as sorted static arrays of `(CID, Unicode)` tuples in dedicated modules (e.g., `adobe_gb1_ucs2.rs`)
-- Lookup uses `binary_search_by_key` for O(log n) performance
-- Tables are generated from Adobe's open-source `cmap-resources` repo (`cid2code.txt` files)
-- Column used: `UniXX-UCS2` (e.g., `UniGB-UCS2`, `UniCNS-UCS2`, `UniKS-UCS2`)
-- For multi-value entries, prefer CJK Unified Ideograph range (0x4E00-0x9FFF)
-- Wire into interpreter.rs via `match si.ordering.as_str()` in the CID→Unicode fallback chain (step 4)
-
-### CID→Unicode Fallback Chain (interpreter.rs)
-1. ToUnicode CMap lookup
-2. CidToGid + CFF glyph name
-3. Pre-Unicode CMap decoding (encoding_rs) — includes EUC-JP, Shift-JIS, GBK, Big5, EUC-KR, and raw JIS X 0208
-4. Adobe CID→Unicode table (Japan1, GB1, CNS1, Korea1)
-5. Fallback: Identity-H/V + Identity ordering → `char::from_u32(cid)`; other CID fonts → `(cid:N)`; simple fonts → `char::from_u32`
-
-### CJK Encoding CMap Name Mapping
-- `GBK-EUC-H/V`, `GBKp-EUC-H/V`, etc. → GBK (encoding_rs::GBK)
-- `ETen-B5-H/V`, `B5pc-H/V`, etc. → Big5 (encoding_rs::BIG5)
-- `90ms-RKSJ-H/V`, etc. → Shift-JIS (encoding_rs::SHIFT_JIS)
-- `EUC-H/V` → EUC-JP (encoding_rs::EUC_JP)
-- `H`, `V` → Raw JIS X 0208 (tagged as encoding_rs::ISO_2022_JP, decoded via JIS→EUC-JP conversion)
-- `KSC-EUC-H/V`, etc. → EUC-KR (encoding_rs::EUC_KR)
-- JIS→Unicode: add 0x80 to each byte → EUC-JP → encoding_rs decode
-
+- `ExtractOptions` in `pdfplumber-core/src/error.rs` controls pipeline behavior. Add new options there and apply in `Pdf::page()` in `pdfplumber/src/pdf.rs`.
+- Cross-validation golden data is generated from Python pdfplumber without normalization or dedup. When comparing, disable features Python doesn't apply by default.
+- `Page::from_extraction()` is the internal constructor — dedup/normalization happen in `Pdf::page()` before calling it.
 ---
 
-## 2026-03-02 - US-205-1
-- Implemented Adobe-GB1 (28660 entries), Adobe-CNS1 (18273 entries), Adobe-Korea1 (17094 entries) CID→Unicode tables
-- Generated from adobe-type-tools/cmap-resources (Adobe-GB1-6, Adobe-CNS1-7, Adobe-Korea1-2 cid2code.txt)
-- Files added:
-  - `crates/pdfplumber-parse/src/adobe_gb1_ucs2.rs` (28677 lines)
-  - `crates/pdfplumber-parse/src/adobe_cns1_ucs2.rs` (18290 lines)
-  - `crates/pdfplumber-parse/src/adobe_korea1_ucs2.rs` (17111 lines)
-- Files changed:
-  - `crates/pdfplumber-parse/src/lib.rs` — added module declarations
-  - `crates/pdfplumber-parse/src/interpreter.rs` — wired GB1/CNS1/Korea1 lookups into fallback chain
-  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded issue-842 and issue-987 from ignored to passing
-- Results:
-  - issue-842-example.pdf: 2.3% → 100% chars (target: >=50%)
-  - issue-987-test.pdf: 50% → 100% chars (target: >=80%)
-  - No regressions: 87 cross-validation tests pass, 0 fail
-- Dependencies added: none
+## 2026-03-02 - US-205-4
+- **What was implemented:** Character deduplication enabled by default in the extraction pipeline. Added `dedupe: Option<DedupeOptions>` field to `ExtractOptions` (default: `Some(DedupeOptions::default())`). Applied dedup in `Pdf::page()` after BiDi + normalization. Updated cross-validation tests to disable dedup (matching Python golden data behavior). Un-ignored 3 dedup-related cross-validation tests.
+- **Files changed:**
+  - `crates/pdfplumber-core/src/error.rs` — Added `dedupe` field to `ExtractOptions`
+  - `crates/pdfplumber/src/pdf.rs` — Added `dedupe_chars` import and dedup step in `Pdf::page()`
+  - `crates/pdfplumber/tests/pdf_integration.rs` — Updated dedupe tests for auto-dedup behavior
+  - `crates/pdfplumber/tests/cross_validation.rs` — Disabled dedup in test harness, un-ignored 3 tests
+  - `crates/pdfplumber/tests/real_world_integration.rs` — Updated overlapping text tests
+  - `scripts/ralph/prd.json` — Set passes: true
+- **Dependencies added:** None
 - **Learnings for future iterations:**
-  - The CID→Unicode tables are large but compile efficiently as static arrays
-  - issue-842 uses GB1 ordering (Simplified Chinese with GB2312 font names)
-  - issue-987 uses non-CJK content but had font encoding gaps resolved by better fallback
----
-
-## 2026-03-02 - US-205-2
-- Added EUC-JP and JIS X 0208 encoding decoders for CID fonts with predefined CMaps
-- Fixed `encoding_for_cmap` to recognize EUC-H/EUC-V → EUC-JP and H/V → JIS X 0208
-- JIS X 0208 decoding: convert raw JIS bytes to EUC-JP (add 0x80 to each byte), then decode via encoding_rs::EUC_JP
-- Used `encoding_rs::ISO_2022_JP` as a tag value for raw JIS X 0208 (H/V CMaps)
-- Fixed `parse_predefined_cmap_name` to recognize `EUC` base as Japan1, and `H`/`V` as Japan1 special cases
-- Files changed:
-  - `crates/pdfplumber-parse/src/cjk_encoding.rs` — fixed EUC/JIS CMap matching, added JIS lead byte detection, added `decode_to_unicode` public function
-  - `crates/pdfplumber-parse/src/cid_font.rs` — added H/V and EUC to predefined CMap name parsing
-  - `crates/pdfplumber-parse/src/interpreter.rs` — use `decode_to_unicode` in Unicode resolution step 3
-  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded noembed-eucjp, noembed-jis7, noembed-sjis from ignored to passing
-- Results:
-  - noembed-eucjp.pdf: 0% → 100% chars (target: >=50%)
-  - noembed-jis7.pdf: 58.3% → 100% chars (target: >=80%)
-  - noembed-sjis.pdf: 100% (already passing, no regression)
-  - No regressions on other tests
-- Dependencies added: none
-- **Learnings for future iterations:**
-  - EUC-H CMap = EUC-JP encoding; "EUC" base without JIS/Japan in name IS still Japanese
-  - H/V CMaps = raw JIS X 0208 encoding (bytes 0x21-0x7E for both bytes of a 2-byte code)
-  - JIS→Unicode conversion: add 0x80 to each byte → EUC-JP → decode via encoding_rs
-  - ISO_2022_JP encoding_rs tag works as sentinel for raw JIS since actual ISO-2022-JP (escape sequence variant) doesn't appear in PDF CMaps
----
-
-## 2026-03-02 - US-205-3
-- Fixed Identity-H/V CID fallback: added `is_identity_encoding` field to `CachedFont`
-- In Unicode resolution fallback (step 5), CID fonts with Identity-H/V encoding AND "Identity" ordering now use `char::from_u32(cid)` instead of `(cid:N)` — treats CID as Unicode codepoint
-- Partial ToUnicode support: ToUnicode lookup (step 1) handles mapped CIDs; Identity encoding fallback handles unmapped CIDs
-- For CID fonts with CJK orderings (Japan1/GB1/CNS1/Korea1), the behavior is unchanged: Adobe table lookup → `(cid:N)` for unmapped
-- Upgraded 6 cross-validation tests from `cross_validate_ignored!` to `cross_validate!`:
-  - noembed-identity: 100% chars (was 58.3%)
-  - noembed-identity-2: 75% chars (was 0%)
-  - extra-attrs-example: 100% chars (was 0%)
-  - issue-192-example: 100% chars (was 0.9%)
-  - la-precinct-bulletin: 100% chars (was 0%)
-  - malformed-from-issue-932: 100% chars (was 0%)
-- Files changed:
-  - `crates/pdfplumber-parse/src/interpreter.rs` — added `is_identity_encoding` to CachedFont, updated fallback chain
-  - `crates/pdfplumber/tests/cross_validation.rs` — upgraded 6 ignored tests to asserting tests
-  - `scripts/ralph/prd.json` — set US-205-3 passes: true
-- Dependencies added: none
-- **Learnings for future iterations:**
-  - Most improvements came "for free" from US-205-1/2 (CJK tables + encoding decoders)
-  - noembed-identity-2 still has 3 missing chars (CIDs 247-249) due to incomplete Adobe-Japan1 table (9,628 entries vs pdfminer's 15,117)
-  - Identity-H encoding ≠ Identity ordering: encoding says how to map bytes→CIDs, ordering says what the CID space means
-  - For Identity ordering, CID=Unicode; for CJK orderings, CID→Unicode requires table lookup
+  - The `dedupe_chars` function and `DedupeOptions` already existed in `pdfplumber-core/src/dedupe.rs` with comprehensive unit tests.
+  - Cross-validation golden data from Python does NOT have dedup applied. Enabling dedup by default causes score drops for PDFs with duplicates (e.g., issue-842: 430→115 chars). Solution: disable dedup in the cross-validation harness.
+  - The acceptance criteria scores (76.8%, 37.3%, 46.2%) were outdated — earlier extraction bugs had been fixed in prior PRs, bringing scores to 100% before this change.
 ---

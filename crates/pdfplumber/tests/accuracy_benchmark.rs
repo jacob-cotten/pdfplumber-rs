@@ -1745,6 +1745,7 @@ fn accuracy_oss_fuzz_5903429863538688() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[ignore] // Run separately: cargo test -p pdfplumber --test accuracy_benchmark accuracy_aggregate_summary -- --ignored --nocapture
 fn accuracy_aggregate_summary() {
     println!("\n========================================");
     println!("  Aggregate Accuracy Benchmark Summary");

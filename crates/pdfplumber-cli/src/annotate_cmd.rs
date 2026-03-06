@@ -5,105 +5,100 @@
 
 use std::path::PathBuf;
 
+#[cfg(feature = "write")]
 use pdfplumber::BBox;
 
 #[cfg(feature = "write")]
 use pdfplumber::write::{AnnotationColor, PdfWriter};
 
-/// Annotation type from CLI.
-#[derive(Debug, Clone)]
-pub enum AnnotateMode {
-    Highlight {
-        page: usize,
-        x0: f64,
-        y0: f64,
-        x1: f64,
-        y1: f64,
-        color: String,
-        note: Option<String>,
-    },
-    Text {
-        page: usize,
-        x0: f64,
-        y0: f64,
-        x1: f64,
-        y1: f64,
-        text: String,
-    },
-    Link {
-        page: usize,
-        x0: f64,
-        y0: f64,
-        x1: f64,
-        y1: f64,
-        uri: String,
-    },
+/// Arguments for the `annotate` subcommand, bundled to avoid too-many-args.
+#[allow(dead_code)]
+pub struct AnnotateArgs<'a> {
+    /// Input PDF path.
+    pub input: &'a PathBuf,
+    /// Output PDF path.
+    pub output: &'a PathBuf,
+    /// 1-based page number.
+    pub page: usize,
+    /// Bounding box: left.
+    pub x0: f64,
+    /// Bounding box: top.
+    pub y0: f64,
+    /// Bounding box: right.
+    pub x1: f64,
+    /// Bounding box: bottom.
+    pub y1: f64,
+    /// Whether to add a highlight annotation.
+    pub highlight: bool,
+    /// Optional text note content.
+    pub text_note: Option<&'a str>,
+    /// Optional link URI.
+    pub link_uri: Option<&'a str>,
+    /// Highlight color name.
+    pub color: &'a str,
+    /// Optional note contents for highlight.
+    pub note_contents: Option<&'a str>,
+    /// Optional PDF password.
+    pub password: Option<&'a str>,
 }
 
-pub fn run(
-    input: &PathBuf,
-    output: &PathBuf,
-    page: usize,
-    x0: f64, y0: f64, x1: f64, y1: f64,
-    highlight: bool,
-    text_note: Option<&str>,
-    link_uri: Option<&str>,
-    color: &str,
-    note_contents: Option<&str>,
-    password: Option<&str>,
-) -> Result<(), i32> {
+/// Run the `annotate` subcommand.
+pub fn run(args: &AnnotateArgs<'_>) -> Result<(), i32> {
     #[cfg(not(feature = "write"))]
     {
-        let _ = (input, output, page, x0, y0, x1, y1, highlight, text_note, link_uri, color, note_contents, password);
+        let _ = args;
         eprintln!("error: the `write` feature is not enabled. Rebuild with --features write");
-        return Err(1);
+        Err(1)
     }
 
     #[cfg(feature = "write")]
     {
-        let file_bytes = std::fs::read(input).map_err(|e| {
-            eprintln!("error reading {}: {e}", input.display());
+        let file_bytes = std::fs::read(args.input).map_err(|e| {
+            eprintln!("error reading {}: {e}", args.input.display());
             1i32
         })?;
 
-        let pdf = crate::shared::open_pdf(input, password, false).map_err(|e| {
+        let pdf = crate::shared::open_pdf(args.input, args.password, false).map_err(|e| {
             eprintln!("error: {e}");
             1i32
         })?;
 
-        let bbox = BBox { x0, y0, x1, y1 };
+        let bbox = BBox {
+            x0: args.x0,
+            y0: args.y0,
+            x1: args.x1,
+            y1: args.y1,
+        };
         let mut writer = PdfWriter::new(&pdf, &file_bytes);
 
-        if highlight {
-            let annot_color = parse_color(color);
-            writer.add_highlight_with_comment(
-                page.saturating_sub(1), // convert 1-based to 0-based
-                bbox,
-                annot_color,
-                note_contents.unwrap_or(""),
-                "",
-            ).map_err(|e| {
-                eprintln!("error adding highlight: {e}");
-                1i32
-            })?;
-        } else if let Some(text) = text_note {
-            writer.add_text_annotation(
-                page.saturating_sub(1),
-                bbox,
-                text,
-            ).map_err(|e| {
-                eprintln!("error adding text annotation: {e}");
-                1i32
-            })?;
-        } else if let Some(uri) = link_uri {
-            writer.add_link_annotation(
-                page.saturating_sub(1),
-                bbox,
-                uri,
-            ).map_err(|e| {
-                eprintln!("error adding link: {e}");
-                1i32
-            })?;
+        if args.highlight {
+            let annot_color = parse_color(args.color);
+            writer
+                .add_highlight_with_comment(
+                    args.page.saturating_sub(1),
+                    bbox,
+                    annot_color,
+                    args.note_contents.unwrap_or(""),
+                    "",
+                )
+                .map_err(|e| {
+                    eprintln!("error adding highlight: {e}");
+                    1i32
+                })?;
+        } else if let Some(text) = args.text_note {
+            writer
+                .add_text_annotation(args.page.saturating_sub(1), bbox, text)
+                .map_err(|e| {
+                    eprintln!("error adding text annotation: {e}");
+                    1i32
+                })?;
+        } else if let Some(uri) = args.link_uri {
+            writer
+                .add_link_annotation(args.page.saturating_sub(1), bbox, uri)
+                .map_err(|e| {
+                    eprintln!("error adding link: {e}");
+                    1i32
+                })?;
         } else {
             eprintln!("error: specify --highlight, --text-note <text>, or --link-uri <url>");
             return Err(1);
@@ -114,14 +109,14 @@ pub fn run(
             1i32
         })?;
 
-        std::fs::write(output, &updated_bytes).map_err(|e| {
-            eprintln!("error writing {}: {e}", output.display());
+        std::fs::write(args.output, &updated_bytes).map_err(|e| {
+            eprintln!("error writing {}: {e}", args.output.display());
             1i32
         })?;
 
         println!(
             "annotated PDF written to {} ({} bytes, +{} bytes incremental)",
-            output.display(),
+            args.output.display(),
             updated_bytes.len(),
             updated_bytes.len().saturating_sub(file_bytes.len()),
         );

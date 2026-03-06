@@ -232,11 +232,7 @@ impl<'a> PdfWriter<'a> {
     }
 
     /// Update a PDF metadata field (written into the `/Info` dictionary).
-    pub fn set_metadata(
-        &mut self,
-        key: impl Into<String>,
-        value: impl Into<String>,
-    ) -> &mut Self {
+    pub fn set_metadata(&mut self, key: impl Into<String>, value: impl Into<String>) -> &mut Self {
         self.metadata_updates.push(MetadataUpdate {
             key: key.into(),
             value: value.into(),
@@ -409,44 +405,35 @@ fn serialize_incremental_update(
         offsets.push((*id, offset));
 
         // Object header: "N G obj\n"
-        write!(buf, "{} {} obj\n", id.0, id.1)
-            .map_err(|e| PdfError::write(e.to_string()))?;
+        write!(buf, "{} {} obj\n", id.0, id.1).map_err(|e| PdfError::write(e.to_string()))?;
 
-        write_object(&mut buf, obj)
-            .map_err(|e| PdfError::write(e.to_string()))?;
+        write_object(&mut buf, obj).map_err(|e| PdfError::write(e.to_string()))?;
 
-        write!(buf, "\nendobj\n")
-            .map_err(|e| PdfError::write(e.to_string()))?;
+        write!(buf, "\nendobj\n").map_err(|e| PdfError::write(e.to_string()))?;
     }
 
     // Write the new xref section
     let xref_offset = buf.len() as u64;
-    write!(buf, "xref\n")
-        .map_err(|e| PdfError::write(e.to_string()))?;
+    write!(buf, "xref\n").map_err(|e| PdfError::write(e.to_string()))?;
 
     // Sort by object number for deterministic output
     let mut sorted_offsets = offsets.clone();
     sorted_offsets.sort_by_key(|(id, _)| id.0);
 
     // Group into contiguous runs (required by PDF xref format)
-    write_xref_sections(&mut buf, &sorted_offsets)
-        .map_err(|e| PdfError::write(e.to_string()))?;
+    write_xref_sections(&mut buf, &sorted_offsets).map_err(|e| PdfError::write(e.to_string()))?;
 
     // Write trailer
     let original_xref_offset = find_startxref(original)
         .ok_or_else(|| PdfError::write("could not find startxref in original PDF"))?;
 
-    let catalog_id = get_catalog_id(doc)
-        .ok_or_else(|| PdfError::write("could not find catalog object id"))?;
+    let catalog_id =
+        get_catalog_id(doc).ok_or_else(|| PdfError::write("could not find catalog object id"))?;
 
     write!(
         buf,
         "trailer\n<< /Size {} /Prev {} /Root {} {} R >>\nstartxref\n{}\n%%EOF\n",
-        next_id,
-        original_xref_offset,
-        catalog_id.0,
-        catalog_id.1,
-        xref_offset,
+        next_id, original_xref_offset, catalog_id.0, catalog_id.1, xref_offset,
     )
     .map_err(|e| PdfError::write(e.to_string()))?;
 
@@ -514,11 +501,7 @@ fn build_highlight_object(_id: ObjectId, hl: &HighlightAnnotation) -> Object {
     );
     dict.set(
         "C",
-        Object::Array(vec![
-            Object::Real(r),
-            Object::Real(g),
-            Object::Real(b),
-        ]),
+        Object::Array(vec![Object::Real(r), Object::Real(g), Object::Real(b)]),
     );
     dict.set("F", Object::Integer(4)); // Print flag
     if let Some(ref contents) = hl.contents {
@@ -597,10 +580,7 @@ fn parse_lopdf(bytes: &[u8]) -> Result<Document, PdfError> {
 }
 
 fn collect_page_ids(doc: &Document) -> Vec<ObjectId> {
-    doc.get_pages()
-        .into_iter()
-        .map(|(_, id)| id)
-        .collect()
+    doc.get_pages().into_iter().map(|(_, id)| id).collect()
 }
 
 fn get_existing_annots(doc: &Document, page_dict: &Dictionary) -> Vec<Object> {
@@ -648,7 +628,10 @@ fn find_startxref(bytes: &[u8]) -> Option<u64> {
     let after = &tail[pos + marker.len()..];
 
     // Skip whitespace, read digits
-    let trimmed = after.iter().skip_while(|&&b| b == b'\r' || b == b'\n' || b == b' ').copied();
+    let trimmed = after
+        .iter()
+        .skip_while(|&&b| b == b'\r' || b == b'\n' || b == b' ')
+        .copied();
     let digits: Vec<u8> = trimmed.take_while(|b| b.is_ascii_digit()).collect();
     let s = std::str::from_utf8(&digits).ok()?;
     s.parse().ok()
@@ -735,7 +718,10 @@ trait Rposition {
 impl<T> Rposition for [T] {
     type Item = T;
     fn rposition<P: Fn(&T) -> bool>(&self, predicate: P) -> Option<usize> {
-        self.iter().enumerate().rev().find_map(|(i, x)| if predicate(x) { Some(i) } else { None })
+        self.iter()
+            .enumerate()
+            .rev()
+            .find_map(|(i, x)| if predicate(x) { Some(i) } else { None })
     }
 }
 
@@ -768,7 +754,8 @@ mod tests {
           trailer\n<< /Size 4 /Root 1 0 R >>\n\
           startxref\n\
           190\n\
-          %%EOF\n".to_vec()
+          %%EOF\n"
+            .to_vec()
     }
 
     #[test]
@@ -805,7 +792,12 @@ mod tests {
 
     #[test]
     fn bbox_to_rect_array_values() {
-        let bbox = BBox { x0: 10.0, y0: 20.0, x1: 200.0, y1: 50.0 };
+        let bbox = BBox {
+            x0: 10.0,
+            y0: 20.0,
+            x1: 200.0,
+            y1: 50.0,
+        };
         let arr = bbox_to_rect_array(&bbox);
         if let Object::Array(items) = arr {
             assert_eq!(items.len(), 4);
@@ -866,7 +858,11 @@ mod tests {
         let mut buf = Vec::new();
         write_object(
             &mut buf,
-            &Object::Array(vec![Object::Integer(1), Object::Integer(2), Object::Integer(3)]),
+            &Object::Array(vec![
+                Object::Integer(1),
+                Object::Integer(2),
+                Object::Integer(3),
+            ]),
         )
         .unwrap();
         assert_eq!(buf, b"[1 2 3]");
@@ -878,7 +874,10 @@ mod tests {
         let pdf = crate::Pdf::open(original.clone().into(), None).unwrap();
         let writer = PdfWriter::new(&pdf, &original);
         let result = writer.write_incremental().unwrap();
-        assert_eq!(result, original, "no mutations should return original unchanged");
+        assert_eq!(
+            result, original,
+            "no mutations should return original unchanged"
+        );
     }
 
     #[test]
@@ -888,7 +887,12 @@ mod tests {
         let mut writer = PdfWriter::new(&pdf, &original);
         let result = writer.add_highlight(
             0,
-            BBox { x0: 72.0, y0: 700.0, x1: 300.0, y1: 720.0 },
+            BBox {
+                x0: 72.0,
+                y0: 700.0,
+                x1: 300.0,
+                y1: 720.0,
+            },
             AnnotationColor::Yellow,
         );
         assert!(result.is_ok());
@@ -901,7 +905,12 @@ mod tests {
         let mut writer = PdfWriter::new(&pdf, &original);
         let result = writer.add_text_annotation(
             0,
-            BBox { x0: 72.0, y0: 650.0, x1: 200.0, y1: 670.0 },
+            BBox {
+                x0: 72.0,
+                y0: 650.0,
+                x1: 200.0,
+                y1: 670.0,
+            },
             "Test note",
         );
         assert!(result.is_ok());
@@ -914,7 +923,12 @@ mod tests {
         let mut writer = PdfWriter::new(&pdf, &original);
         let result = writer.add_link_annotation(
             0,
-            BBox { x0: 100.0, y0: 600.0, x1: 300.0, y1: 620.0 },
+            BBox {
+                x0: 100.0,
+                y0: 600.0,
+                x1: 300.0,
+                y1: 620.0,
+            },
             "https://example.com",
         );
         assert!(result.is_ok());
@@ -933,7 +947,12 @@ mod tests {
     fn build_highlight_object_has_required_keys() {
         let hl = HighlightAnnotation {
             page: 0,
-            bbox: BBox { x0: 50.0, y0: 700.0, x1: 200.0, y1: 720.0 },
+            bbox: BBox {
+                x0: 50.0,
+                y0: 700.0,
+                x1: 200.0,
+                y1: 720.0,
+            },
             color: AnnotationColor::Yellow,
             contents: Some("test".to_string()),
             author: Some("Tester".to_string()),
@@ -956,7 +975,12 @@ mod tests {
     fn build_link_annotation_has_action_dict() {
         let la = LinkAnnotation {
             page: 0,
-            bbox: BBox { x0: 100.0, y0: 600.0, x1: 300.0, y1: 620.0 },
+            bbox: BBox {
+                x0: 100.0,
+                y0: 600.0,
+                x1: 300.0,
+                y1: 620.0,
+            },
             uri: "https://example.com".to_string(),
         };
         let obj = build_link_annotation_object((5, 0), &la);
@@ -974,7 +998,10 @@ mod tests {
         write_xref_sections(&mut buf, &offsets).unwrap();
         let s = std::str::from_utf8(&buf).unwrap();
         assert!(s.contains("5 1\n"), "xref header for object 5, count 1");
-        assert!(s.contains("0000001234 00000 n"), "xref entry with offset 1234");
+        assert!(
+            s.contains("0000001234 00000 n"),
+            "xref entry with offset 1234"
+        );
     }
 
     #[test]

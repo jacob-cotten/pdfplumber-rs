@@ -52,6 +52,7 @@ impl Char {
 /// Text flow direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum TextDirection {
     /// Left-to-right (default for Latin, CJK horizontal).
     #[default]

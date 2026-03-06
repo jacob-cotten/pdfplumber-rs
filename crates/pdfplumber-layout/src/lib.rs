@@ -86,6 +86,7 @@ pub use sections::Section;
 /// Semantic block type — the union of all layout elements on a page.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum LayoutBlock {
     /// A heading at a given level.
     Heading(Heading),

@@ -68,6 +68,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             LayoutBlock::Paragraph(_) => p += 1,
             LayoutBlock::Table(_) => t += 1,
             LayoutBlock::Figure(_) => f += 1,
+            _ => {}
         }
     }
     println!("block breakdown → H:{h}  P:{p}  T:{t}  F:{f}");

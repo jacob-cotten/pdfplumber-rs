@@ -946,7 +946,7 @@ mod tests {
         let pdf = Pdf::open(&data, None).unwrap();
         let page = pdf.page(0).unwrap();
         let cropped = page.crop(BBox::new(0.0, 0.0, 612.0, 792.0));
-        let text = cropped.extract_text(Some(false));
+        let text = cropped.extract_text(&pdfplumber::TextOptions::default());
         // Full-page crop should preserve all text
         assert!(text.contains("Hello") || text.is_empty()); // empty if Helvetica unresolved
     }
@@ -957,7 +957,7 @@ mod tests {
         let pdf = Pdf::open(&data, None).unwrap();
         let page = pdf.page(0).unwrap();
         let cropped = page.crop(BBox::new(0.0, 0.0, 612.0, 792.0));
-        let _ = cropped.extract_words(Some(3.0), Some(3.0));
+        let _ = cropped.extract_words(&pdfplumber::WordOptions::default());
     }
 
     #[test]
@@ -966,7 +966,7 @@ mod tests {
         let pdf = Pdf::open(&data, None).unwrap();
         let page = pdf.page(0).unwrap();
         let cropped = page.crop(BBox::new(0.0, 0.0, 612.0, 792.0));
-        let _ = cropped.find_tables();
+        let _ = cropped.find_tables(&pdfplumber::TableSettings::default());
     }
 
     #[test]
@@ -975,7 +975,7 @@ mod tests {
         let pdf = Pdf::open(&data, None).unwrap();
         let page = pdf.page(0).unwrap();
         let cropped = page.crop(BBox::new(0.0, 0.0, 612.0, 792.0));
-        let _ = cropped.extract_tables();
+        let _ = cropped.find_tables(&pdfplumber::TableSettings::default());
     }
 
     #[test]

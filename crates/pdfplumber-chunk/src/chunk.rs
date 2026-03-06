@@ -5,6 +5,7 @@ use pdfplumber_core::BBox;
 /// Classification of a chunk's semantic role in the document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum ChunkType {
     /// A narrative paragraph or body text block.
     Paragraph,

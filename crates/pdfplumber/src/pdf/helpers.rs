@@ -132,18 +132,21 @@ pub(super) fn rotate_direction(dir: TextDirection, rotation: i32) -> TextDirecti
             TextDirection::Rtl => TextDirection::Btt,
             TextDirection::Ttb => TextDirection::Rtl,
             TextDirection::Btt => TextDirection::Ltr,
+            _ => dir,
         },
         180 => match dir {
             TextDirection::Ltr => TextDirection::Rtl,
             TextDirection::Rtl => TextDirection::Ltr,
             TextDirection::Ttb => TextDirection::Btt,
             TextDirection::Btt => TextDirection::Ttb,
+            _ => dir,
         },
         270 => match dir {
             TextDirection::Ltr => TextDirection::Btt,
             TextDirection::Rtl => TextDirection::Ttb,
             TextDirection::Ttb => TextDirection::Ltr,
             TextDirection::Btt => TextDirection::Rtl,
+            _ => dir,
         },
         _ => dir,
     }

@@ -9,6 +9,7 @@ use pdfplumber_core::StructElement;
 
 /// Severity of an accessibility violation.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum Severity {
     /// Informational note — not a failure, but worth knowing.
     Info,

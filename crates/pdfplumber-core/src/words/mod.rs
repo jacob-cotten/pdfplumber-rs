@@ -351,7 +351,7 @@ impl WordExtractor {
 
     fn make_word(chars: &[Char], expand_ligatures: bool) -> Word {
         let raw_text: String = chars.iter().map(|c| c.text.as_str()).collect();
-        let mut text = if expand_ligatures {
+        let text = if expand_ligatures {
             expand_ligatures_in_text(&raw_text)
         } else {
             raw_text

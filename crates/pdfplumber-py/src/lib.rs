@@ -48,6 +48,7 @@ fn to_py_err(e: PdfError) -> PyErr {
             PdfInvalidPassword::new_err("the supplied password is incorrect")
         }
         PdfError::Other(msg) => PyRuntimeError::new_err(msg),
+        _ => PyRuntimeError::new_err(format!("PDF error: {e}")),
     }
 }
 
@@ -65,6 +66,7 @@ fn color_to_py(py: Python<'_>, color: &Color) -> PyObject {
             .into_any()
             .unbind(),
         Color::Other(vals) => vals.clone().into_pyobject(py).unwrap().into_any().unbind(),
+        _ => py.None(),
     }
 }
 
@@ -86,6 +88,7 @@ fn char_to_dict(py: Python<'_>, ch: &Char) -> PyResult<PyObject> {
             ::pdfplumber::TextDirection::Rtl => "rtl",
             ::pdfplumber::TextDirection::Ttb => "ttb",
             ::pdfplumber::TextDirection::Btt => "btt",
+            _ => "ltr",
         },
     )?;
     dict.set_item(
@@ -120,6 +123,7 @@ fn word_to_dict(py: Python<'_>, word: &Word) -> PyResult<PyObject> {
             ::pdfplumber::TextDirection::Rtl => "rtl",
             ::pdfplumber::TextDirection::Ttb => "ttb",
             ::pdfplumber::TextDirection::Btt => "btt",
+            _ => "ltr",
         },
     )?;
     Ok(dict.into_any().unbind())

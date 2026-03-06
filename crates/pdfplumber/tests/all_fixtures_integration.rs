@@ -15,9 +15,7 @@
 
 use std::path::PathBuf;
 
-use pdfplumber::{
-    BBox, ExtractOptions, Pdf, TableSettings, TextOptions, UnicodeNorm, WordOptions,
-};
+use pdfplumber::{BBox, ExtractOptions, Pdf, TableSettings, TextOptions, UnicodeNorm, WordOptions};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -39,8 +37,7 @@ fn open_pdf(name: &str) -> Pdf {
         ..ExtractOptions::default()
     };
     let path = pdf_path(name);
-    Pdf::open_file(&path, Some(opts))
-        .unwrap_or_else(|e| panic!("Failed to open {}: {}", name, e))
+    Pdf::open_file(&path, Some(opts)).unwrap_or_else(|e| panic!("Failed to open {}: {}", name, e))
 }
 
 /// Open a PDF, tolerating parse failures (for known-malformed fixtures).
@@ -58,15 +55,23 @@ fn assert_chars_have_valid_coords(pdf: &Pdf, page_idx: usize, pdf_name: &str) {
     let page = pdf.page(page_idx).unwrap();
     for ch in page.chars() {
         assert!(
-            ch.bbox.x0 >= -1.0 && ch.bbox.x1 >= -1.0
-                && ch.bbox.top >= -1.0 && ch.bbox.bottom >= -1.0,
+            ch.bbox.x0 >= -1.0
+                && ch.bbox.x1 >= -1.0
+                && ch.bbox.top >= -1.0
+                && ch.bbox.bottom >= -1.0,
             "{} page {}: char '{}' has negative bbox {:?}",
-            pdf_name, page_idx, ch.text, ch.bbox
+            pdf_name,
+            page_idx,
+            ch.text,
+            ch.bbox
         );
         assert!(
             ch.bbox.x1 >= ch.bbox.x0 - 1.0,
             "{} page {}: char '{}' has x1 < x0: {:?}",
-            pdf_name, page_idx, ch.text, ch.bbox
+            pdf_name,
+            page_idx,
+            ch.text,
+            ch.bbox
         );
     }
 }
@@ -78,12 +83,17 @@ fn assert_words_have_valid_form(pdf: &Pdf, page_idx: usize, pdf_name: &str) {
         assert!(
             !w.text.is_empty(),
             "{} page {}: extracted empty-text word at {:?}",
-            pdf_name, page_idx, w.bbox
+            pdf_name,
+            page_idx,
+            w.bbox
         );
         assert!(
             w.bbox.x0 >= -1.0 && w.bbox.top >= -1.0,
             "{} page {}: word '{}' has negative coords {:?}",
-            pdf_name, page_idx, w.text, w.bbox
+            pdf_name,
+            page_idx,
+            w.text,
+            w.bbox
         );
     }
 }
@@ -108,7 +118,11 @@ fn lorem_ipsum_page0_dimensions() {
 fn lorem_ipsum_page0_has_substantial_chars() {
     let pdf = open_pdf("issue-33-lorem-ipsum.pdf");
     let page = pdf.page(0).unwrap();
-    assert!(page.chars().len() >= 1000, "page 0 should have ≥1000 chars, got {}", page.chars().len());
+    assert!(
+        page.chars().len() >= 1000,
+        "page 0 should have ≥1000 chars, got {}",
+        page.chars().len()
+    );
 }
 
 #[test]
@@ -116,7 +130,11 @@ fn lorem_ipsum_page0_has_words() {
     let pdf = open_pdf("issue-33-lorem-ipsum.pdf");
     let page = pdf.page(0).unwrap();
     let words = page.extract_words(&WordOptions::default());
-    assert!(words.len() >= 100, "page 0 should have ≥100 words, got {}", words.len());
+    assert!(
+        words.len() >= 100,
+        "page 0 should have ≥100 words, got {}",
+        words.len()
+    );
 }
 
 #[test]
@@ -155,7 +173,10 @@ fn lorem_ipsum_extract_text_nonempty() {
     let pdf = open_pdf("issue-33-lorem-ipsum.pdf");
     let page = pdf.page(0).unwrap();
     let text = page.extract_text(&TextOptions::default());
-    assert!(!text.is_empty(), "extract_text should return non-empty string");
+    assert!(
+        !text.is_empty(),
+        "extract_text should return non-empty string"
+    );
     assert!(text.len() >= 100, "extract_text should return ≥100 chars");
 }
 
@@ -172,8 +193,12 @@ fn nics_standard_landscape_dimensions() {
     let pdf = open_pdf("nics-background-checks-2015-11.pdf");
     let page = pdf.page(0).unwrap();
     // Landscape: width > height
-    assert!(page.width() > page.height(),
-        "nics standard should be landscape (w={} h={})", page.width(), page.height());
+    assert!(
+        page.width() > page.height(),
+        "nics standard should be landscape (w={} h={})",
+        page.width(),
+        page.height()
+    );
     assert!((page.width() - 1008.0).abs() < 2.0, "width should be ~1008");
     assert!((page.height() - 612.0).abs() < 2.0, "height should be ~612");
 }
@@ -182,7 +207,11 @@ fn nics_standard_landscape_dimensions() {
 fn nics_standard_has_many_chars() {
     let pdf = open_pdf("nics-background-checks-2015-11.pdf");
     let page = pdf.page(0).unwrap();
-    assert!(page.chars().len() >= 3000, "nics should have ≥3000 chars, got {}", page.chars().len());
+    assert!(
+        page.chars().len() >= 3000,
+        "nics should have ≥3000 chars, got {}",
+        page.chars().len()
+    );
 }
 
 #[test]
@@ -190,7 +219,10 @@ fn nics_standard_detects_table() {
     let pdf = open_pdf("nics-background-checks-2015-11.pdf");
     let page = pdf.page(0).unwrap();
     let tables = page.find_tables(&TableSettings::default());
-    assert!(!tables.is_empty(), "nics standard should find at least 1 table");
+    assert!(
+        !tables.is_empty(),
+        "nics standard should find at least 1 table"
+    );
 }
 
 #[test]
@@ -200,7 +232,11 @@ fn nics_standard_table_has_17_columns() {
     let tables = page.find_tables(&TableSettings::default());
     if let Some(table) = tables.first() {
         let max_cols = table.rows.iter().map(|r| r.len()).max().unwrap_or(0);
-        assert!(max_cols >= 15, "nics table should have ≥15 cols (expected 17), got {}", max_cols);
+        assert!(
+            max_cols >= 15,
+            "nics table should have ≥15 cols (expected 17), got {}",
+            max_cols
+        );
     }
 }
 
@@ -224,10 +260,16 @@ fn nics_rotated_dimensions_swapped() {
     let page = pdf.page(0).unwrap();
     // Rotated 90°: width and height are swapped vs standard
     // Standard is 1008x612; rotated should present as 612x1008 (portrait)
-    assert!((page.width() - 612.0).abs() < 2.0,
-        "rotated nics width should be ~612 (was 1008 unrotated), got {}", page.width());
-    assert!((page.height() - 1008.0).abs() < 2.0,
-        "rotated nics height should be ~1008 (was 612 unrotated), got {}", page.height());
+    assert!(
+        (page.width() - 612.0).abs() < 2.0,
+        "rotated nics width should be ~612 (was 1008 unrotated), got {}",
+        page.width()
+    );
+    assert!(
+        (page.height() - 1008.0).abs() < 2.0,
+        "rotated nics height should be ~1008 (was 612 unrotated), got {}",
+        page.height()
+    );
 }
 
 #[test]
@@ -238,15 +280,23 @@ fn nics_rotated_has_same_char_count_as_standard() {
     let rot_chars = pdf_rot.page(0).unwrap().chars().len();
     // Rotated page should extract same number of chars (±5% tolerance)
     let ratio = rot_chars as f64 / std_chars as f64;
-    assert!(ratio >= 0.95 && ratio <= 1.05,
-        "rotated char count {} should be within 5% of standard {}", rot_chars, std_chars);
+    assert!(
+        ratio >= 0.95 && ratio <= 1.05,
+        "rotated char count {} should be within 5% of standard {}",
+        rot_chars,
+        std_chars
+    );
 }
 
 #[test]
 fn nics_rotated_rotation_metadata() {
     let pdf = open_pdf("nics-background-checks-2015-11-rotated.pdf");
     let page = pdf.page(0).unwrap();
-    assert_eq!(page.rotation(), 90, "rotated nics should report 90° rotation");
+    assert_eq!(
+        page.rotation(),
+        90,
+        "rotated nics should report 90° rotation"
+    );
 }
 
 #[test]
@@ -256,10 +306,22 @@ fn nics_rotated_chars_within_page_bounds() {
     let w = page.width();
     let h = page.height();
     for ch in page.chars() {
-        assert!(ch.bbox.x0 >= -2.0 && ch.bbox.x1 <= w + 2.0,
-            "char '{}' x [{}, {}] outside page width {}", ch.text, ch.bbox.x0, ch.bbox.x1, w);
-        assert!(ch.bbox.top >= -2.0 && ch.bbox.bottom <= h + 2.0,
-            "char '{}' y [{}, {}] outside page height {}", ch.text, ch.bbox.top, ch.bbox.bottom, h);
+        assert!(
+            ch.bbox.x0 >= -2.0 && ch.bbox.x1 <= w + 2.0,
+            "char '{}' x [{}, {}] outside page width {}",
+            ch.text,
+            ch.bbox.x0,
+            ch.bbox.x1,
+            w
+        );
+        assert!(
+            ch.bbox.top >= -2.0 && ch.bbox.bottom <= h + 2.0,
+            "char '{}' y [{}, {}] outside page height {}",
+            ch.text,
+            ch.bbox.top,
+            ch.bbox.bottom,
+            h
+        );
     }
 }
 
@@ -295,7 +357,11 @@ fn scotus_text_contains_transcript_markers() {
     let page = pdf.page(0).unwrap();
     let text = page.extract_text(&TextOptions::default());
     // SCOTUS transcripts have numbered lines; text should be substantial
-    assert!(text.len() >= 200, "scotus text should be ≥200 chars, got {}", text.len());
+    assert!(
+        text.len() >= 200,
+        "scotus text should be ≥200 chars, got {}",
+        text.len()
+    );
 }
 
 // ─── senate-expenditures.pdf ─────────────────────────────────────────────────
@@ -313,14 +379,21 @@ fn senate_expenditures_landscape() {
 fn senate_expenditures_has_table() {
     let pdf = open_pdf("senate-expenditures.pdf");
     let tables = pdf.page(0).unwrap().find_tables(&TableSettings::default());
-    assert!(!tables.is_empty(), "senate expenditures should have a table");
+    assert!(
+        !tables.is_empty(),
+        "senate expenditures should have a table"
+    );
 }
 
 #[test]
 fn senate_expenditures_has_chars() {
     let pdf = open_pdf("senate-expenditures.pdf");
     let chars = pdf.page(0).unwrap().chars().len();
-    assert!(chars >= 2000, "senate should have ≥2000 chars, got {}", chars);
+    assert!(
+        chars >= 2000,
+        "senate should have ≥2000 chars, got {}",
+        chars
+    );
 }
 
 // ─── federal-register-2020-17221.pdf ─────────────────────────────────────────
@@ -328,14 +401,22 @@ fn senate_expenditures_has_chars() {
 #[test]
 fn federal_register_multipage() {
     let pdf = open_pdf("federal-register-2020-17221.pdf");
-    assert!(pdf.page_count() >= 15, "federal register should have ≥15 pages, got {}", pdf.page_count());
+    assert!(
+        pdf.page_count() >= 15,
+        "federal register should have ≥15 pages, got {}",
+        pdf.page_count()
+    );
 }
 
 #[test]
 fn federal_register_page0_dense_text() {
     let pdf = open_pdf("federal-register-2020-17221.pdf");
     let chars = pdf.page(0).unwrap().chars().len();
-    assert!(chars >= 4000, "federal register p0 should have ≥4000 chars, got {}", chars);
+    assert!(
+        chars >= 4000,
+        "federal register p0 should have ≥4000 chars, got {}",
+        chars
+    );
 }
 
 #[test]
@@ -356,10 +437,20 @@ fn federal_register_cumulative_doctop_increases() {
     for i in 0..pdf.page_count().min(3) {
         let page = pdf.page(i).unwrap();
         let chars = page.chars();
-        if chars.is_empty() { continue; }
-        let max_doctop = chars.iter().map(|c| c.doctop).fold(f64::NEG_INFINITY, f64::max);
-        assert!(max_doctop > last_max_doctop,
-            "page {} max doctop {} should exceed previous {}", i, max_doctop, last_max_doctop);
+        if chars.is_empty() {
+            continue;
+        }
+        let max_doctop = chars
+            .iter()
+            .map(|c| c.doctop)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            max_doctop > last_max_doctop,
+            "page {} max doctop {} should exceed previous {}",
+            i,
+            max_doctop,
+            last_max_doctop
+        );
         last_max_doctop = max_doctop;
     }
 }
@@ -369,7 +460,11 @@ fn federal_register_cumulative_doctop_increases() {
 #[test]
 fn chelsea_pdta_large_multipage() {
     let pdf = open_pdf("chelsea_pdta.pdf");
-    assert!(pdf.page_count() >= 60, "chelsea should have ≥60 pages, got {}", pdf.page_count());
+    assert!(
+        pdf.page_count() >= 60,
+        "chelsea should have ≥60 pages, got {}",
+        pdf.page_count()
+    );
 }
 
 #[test]
@@ -421,7 +516,10 @@ fn table_curves_table_has_multiple_rows() {
     let pdf = open_pdf("table-curves-example.pdf");
     let tables = pdf.page(0).unwrap().find_tables(&TableSettings::default());
     if let Some(table) = tables.first() {
-        assert!(table.rows.len() >= 3, "table-curves table should have ≥3 rows");
+        assert!(
+            table.rows.len() >= 3,
+            "table-curves table should have ≥3 rows"
+        );
     }
 }
 
@@ -451,7 +549,10 @@ fn annotations_has_annotation_objects() {
     let pdf = open_pdf("annotations.pdf");
     let page = pdf.page(0).unwrap();
     let annotations = page.annotations();
-    assert!(!annotations.is_empty(), "annotations.pdf should have annotation objects");
+    assert!(
+        !annotations.is_empty(),
+        "annotations.pdf should have annotation objects"
+    );
 }
 
 // ─── annotations-rotated-90.pdf ──────────────────────────────────────────────
@@ -468,14 +569,23 @@ fn annotations_rotated_90_dimensions_swapped() {
     let pdf = open_pdf("annotations-rotated-90.pdf");
     let page = pdf.page(0).unwrap();
     // Rotated 90°: 595x842 becomes 842x595
-    assert!((page.width() - 842.0).abs() < 2.0, "rotated 90° width should be ~842");
-    assert!((page.height() - 595.0).abs() < 2.0, "rotated 90° height should be ~595");
+    assert!(
+        (page.width() - 842.0).abs() < 2.0,
+        "rotated 90° width should be ~842"
+    );
+    assert!(
+        (page.height() - 595.0).abs() < 2.0,
+        "rotated 90° height should be ~595"
+    );
 }
 
 #[test]
 fn annotations_rotated_90_has_chars() {
     let pdf = open_pdf("annotations-rotated-90.pdf");
-    assert!(!pdf.page(0).unwrap().chars().is_empty(), "rotated 90° should still extract chars");
+    assert!(
+        !pdf.page(0).unwrap().chars().is_empty(),
+        "rotated 90° should still extract chars"
+    );
 }
 
 // ─── annotations-rotated-180.pdf / annotations-rotated-270.pdf ───────────────
@@ -516,7 +626,11 @@ fn page_boxes_opens() {
 fn page_boxes_has_chars() {
     let pdf = open_pdf("page-boxes-example.pdf");
     let chars = pdf.page(0).unwrap().chars().len();
-    assert!(chars >= 10, "page-boxes should have ≥10 chars, got {}", chars);
+    assert!(
+        chars >= 10,
+        "page-boxes should have ≥10 chars, got {}",
+        chars
+    );
 }
 
 #[test]
@@ -552,7 +666,10 @@ fn issue_1054_chars_within_bounds() {
 fn issue_1114_dedupe_landscape() {
     let pdf = open_pdf("issue-1114-dedupe-chars.pdf");
     let page = pdf.page(0).unwrap();
-    assert!(page.width() > page.height(), "issue-1114 should be landscape");
+    assert!(
+        page.width() > page.height(),
+        "issue-1114 should be landscape"
+    );
 }
 
 #[test]
@@ -560,7 +677,11 @@ fn issue_1114_dedupe_has_chars() {
     let pdf = open_pdf("issue-1114-dedupe-chars.pdf");
     let chars = pdf.page(0).unwrap().chars().len();
     // Golden has 126 chars; with dedup disabled we may get duplicates, ≥100 is safe
-    assert!(chars >= 100, "issue-1114 should have ≥100 chars, got {}", chars);
+    assert!(
+        chars >= 100,
+        "issue-1114 should have ≥100 chars, got {}",
+        chars
+    );
 }
 
 // ─── issue-192-example.pdf ───────────────────────────────────────────────────
@@ -620,9 +741,14 @@ fn issue_463_multipage_tables() {
     let mut found_table = false;
     for i in 0..3 {
         let tables = pdf.page(i).unwrap().find_tables(&TableSettings::default());
-        if !tables.is_empty() { found_table = true; }
+        if !tables.is_empty() {
+            found_table = true;
+        }
     }
-    assert!(found_table, "issue-463 should find at least one table across pages");
+    assert!(
+        found_table,
+        "issue-463 should find at least one table across pages"
+    );
 }
 
 // ─── issue-466-example.pdf ───────────────────────────────────────────────────
@@ -728,7 +854,10 @@ fn la_precinct_landscape_page() {
     assert_eq!(pdf.page_count(), 1);
     let page = pdf.page(0).unwrap();
     assert!((page.width() - 792.0).abs() < 2.0, "la precinct width ~792");
-    assert!((page.height() - 612.0).abs() < 2.0, "la precinct height ~612");
+    assert!(
+        (page.height() - 612.0).abs() < 2.0,
+        "la precinct height ~612"
+    );
 }
 
 #[test]
@@ -774,7 +903,11 @@ fn pdf_structure_single_page_chars() {
     let pdf = open_pdf("pdf_structure.pdf");
     assert_eq!(pdf.page_count(), 1);
     let chars = pdf.page(0).unwrap().chars().len();
-    assert!(chars >= 500, "pdf_structure should have ≥500 chars, got {}", chars);
+    assert!(
+        chars >= 500,
+        "pdf_structure should have ≥500 chars, got {}",
+        chars
+    );
 }
 
 // ─── word365_structure.pdf ───────────────────────────────────────────────────
@@ -808,10 +941,12 @@ fn test_punkt_all_pages_extract() {
 fn issue_982_multipage_heavy() {
     let pdf = open_pdf("issue-982-example.pdf");
     assert_eq!(pdf.page_count(), 8);
-    let total_chars: usize = (0..8)
-        .map(|i| pdf.page(i).unwrap().chars().len())
-        .sum();
-    assert!(total_chars >= 10000, "issue-982 total chars should be ≥10000, got {}", total_chars);
+    let total_chars: usize = (0..8).map(|i| pdf.page(i).unwrap().chars().len()).sum();
+    assert!(
+        total_chars >= 10000,
+        "issue-982 total chars should be ≥10000, got {}",
+        total_chars
+    );
 }
 
 // ─── issue-905.pdf ───────────────────────────────────────────────────────────
@@ -822,7 +957,11 @@ fn issue_905_opens_minimal_chars() {
     assert_eq!(pdf.page_count(), 1);
     // Golden has only 2 chars — special/minimal PDF
     let chars = pdf.page(0).unwrap().chars().len();
-    assert!(chars <= 50, "issue-905 should be minimal, got {} chars", chars);
+    assert!(
+        chars <= 50,
+        "issue-905 should be minimal, got {} chars",
+        chars
+    );
 }
 
 // ─── issue-912.pdf ───────────────────────────────────────────────────────────
@@ -832,7 +971,10 @@ fn issue_912_landscape_two_pages() {
     let pdf = open_pdf("issue-912.pdf");
     assert_eq!(pdf.page_count(), 2);
     let page = pdf.page(0).unwrap();
-    assert!(page.width() > page.height(), "issue-912 should be landscape");
+    assert!(
+        page.width() > page.height(),
+        "issue-912 should be landscape"
+    );
 }
 
 // ─── WARN-Report-for-7-1-2015-to-03-25-2016.pdf ──────────────────────────────
@@ -848,7 +990,10 @@ fn warn_report_landscape_pages() {
     let pdf = open_pdf("WARN-Report-for-7-1-2015-to-03-25-2016.pdf");
     let page = pdf.page(0).unwrap();
     assert!((page.width() - 792.0).abs() < 2.0, "WARN report width ~792");
-    assert!((page.height() - 612.0).abs() < 2.0, "WARN report height ~612");
+    assert!(
+        (page.height() - 612.0).abs() < 2.0,
+        "WARN report height ~612"
+    );
 }
 
 #[test]
@@ -856,9 +1001,17 @@ fn warn_report_tables_on_multiple_pages() {
     let pdf = open_pdf("WARN-Report-for-7-1-2015-to-03-25-2016.pdf");
     let mut table_count = 0usize;
     for i in 0..pdf.page_count() {
-        table_count += pdf.page(i).unwrap().find_tables(&TableSettings::default()).len();
+        table_count += pdf
+            .page(i)
+            .unwrap()
+            .find_tables(&TableSettings::default())
+            .len();
     }
-    assert!(table_count >= 10, "WARN report should have ≥10 tables total, got {}", table_count);
+    assert!(
+        table_count >= 10,
+        "WARN report should have ≥10 tables total, got {}",
+        table_count
+    );
 }
 
 // ─── 150109DSP-Milw-505-90D.pdf ──────────────────────────────────────────────
@@ -901,7 +1054,11 @@ fn cupertino_usd_letter_single_page() {
 fn cupertino_usd_substantial_chars() {
     let pdf = open_pdf("cupertino_usd_4-6-16.pdf");
     let chars = pdf.page(0).unwrap().chars().len();
-    assert!(chars >= 2000, "cupertino should have ≥2000 chars, got {}", chars);
+    assert!(
+        chars >= 2000,
+        "cupertino should have ≥2000 chars, got {}",
+        chars
+    );
 }
 
 // ─── 2023-06-20-PV.pdf ───────────────────────────────────────────────────────
@@ -923,7 +1080,10 @@ fn image_structure_has_images() {
     let page = pdf.page(0).unwrap();
     // This PDF should have image objects
     let images = page.images();
-    assert!(!images.is_empty(), "image_structure should have image objects");
+    assert!(
+        !images.is_empty(),
+        "image_structure should have image objects"
+    );
 }
 
 // ─── figure_structure.pdf ────────────────────────────────────────────────────
@@ -975,7 +1135,10 @@ fn issue_140_landscape_tables() {
     let pdf = open_pdf("issue-140-example.pdf");
     assert_eq!(pdf.page_count(), 1);
     let page = pdf.page(0).unwrap();
-    assert!(page.width() > page.height(), "issue-140 should be landscape");
+    assert!(
+        page.width() > page.height(),
+        "issue-140 should be landscape"
+    );
     let tables = page.find_tables(&TableSettings::default());
     assert!(!tables.is_empty(), "issue-140 should detect tables");
 }
@@ -1045,7 +1208,10 @@ fn issue_1147_landscape_no_panic() {
     let pdf = open_pdf("issue-1147-example.pdf");
     assert_eq!(pdf.page_count(), 1);
     let page = pdf.page(0).unwrap();
-    assert!(page.width() > page.height(), "issue-1147 should be landscape");
+    assert!(
+        page.width() > page.height(),
+        "issue-1147 should be landscape"
+    );
     let _ = page.chars();
 }
 
@@ -1077,7 +1243,10 @@ fn extra_attrs_very_large_canvas() {
 fn annotations_unicode_issues_has_chars() {
     let pdf = open_pdf("annotations-unicode-issues.pdf");
     let chars = pdf.page(0).unwrap().chars().len();
-    assert!(chars > 0, "annotations-unicode-issues should extract some chars");
+    assert!(
+        chars > 0,
+        "annotations-unicode-issues should extract some chars"
+    );
 }
 
 // ─── issue-1181.pdf special handling already above ────────────────────────────
@@ -1160,8 +1329,12 @@ fn all_rotated_fixtures_have_nonzero_rotation() {
         let pdf = open_pdf(name);
         let page = pdf.page(0).unwrap();
         assert_eq!(
-            page.rotation(), *expected_rotation,
-            "{}: expected rotation {} got {}", name, expected_rotation, page.rotation()
+            page.rotation(),
+            *expected_rotation,
+            "{}: expected rotation {} got {}",
+            name,
+            expected_rotation,
+            page.rotation()
         );
     }
 }
@@ -1180,7 +1353,13 @@ fn non_rotated_fixtures_have_zero_rotation() {
     for name in &fixtures {
         let pdf = open_pdf(name);
         let page = pdf.page(0).unwrap();
-        assert_eq!(page.rotation(), 0, "{} should have 0 rotation, got {}", name, page.rotation());
+        assert_eq!(
+            page.rotation(),
+            0,
+            "{} should have 0 rotation, got {}",
+            name,
+            page.rotation()
+        );
     }
 }
 
@@ -1203,7 +1382,11 @@ fn table_heavy_fixtures_detect_tables() {
     for name in &fixtures_with_tables {
         let pdf = open_pdf(name);
         let tables = pdf.page(0).unwrap().find_tables(&TableSettings::default());
-        assert!(!tables.is_empty(), "{}: expected to find tables but found none", name);
+        assert!(
+            !tables.is_empty(),
+            "{}: expected to find tables but found none",
+            name
+        );
     }
 }
 
@@ -1222,8 +1405,12 @@ fn page_number_matches_index_for_all_fixtures() {
         for i in 0..pdf.page_count() {
             let page = pdf.page(i).unwrap();
             assert_eq!(
-                page.page_number(), i,
-                "{}: page at index {} reported page_number {}", name, i, page.page_number()
+                page.page_number(),
+                i,
+                "{}: page at index {} reported page_number {}",
+                name,
+                i,
+                page.page_number()
             );
         }
     }
@@ -1248,14 +1435,19 @@ fn table_cells_with_visible_text_have_some_text() {
             }
         }
         // At least some cells should have content (this is a text table)
-        assert!(cells_with_content > 0,
-            "lorem ipsum table should have cells with text content");
+        assert!(
+            cells_with_content > 0,
+            "lorem ipsum table should have cells with text content"
+        );
         // None cells are allowed (empty cells), but content cells should dominate
         let total = cells_with_content + cells_with_none;
         if total > 0 {
             let content_ratio = cells_with_content as f64 / total as f64;
-            assert!(content_ratio >= 0.5,
-                "majority of table cells should have content, got {:.1}%", content_ratio * 100.0);
+            assert!(
+                content_ratio >= 0.5,
+                "majority of table cells should have content, got {:.1}%",
+                content_ratio * 100.0
+            );
         }
     }
 }
@@ -1277,11 +1469,21 @@ fn char_bboxes_always_ordered() {
             for ch in page.chars() {
                 assert!(
                     ch.bbox.x0 <= ch.bbox.x1 + 0.5,
-                    "{} p{}: char '{}' has x0={} > x1={}", name, i, ch.text, ch.bbox.x0, ch.bbox.x1
+                    "{} p{}: char '{}' has x0={} > x1={}",
+                    name,
+                    i,
+                    ch.text,
+                    ch.bbox.x0,
+                    ch.bbox.x1
                 );
                 assert!(
                     ch.bbox.top <= ch.bbox.bottom + 0.5,
-                    "{} p{}: char '{}' has top={} > bottom={}", name, i, ch.text, ch.bbox.top, ch.bbox.bottom
+                    "{} p{}: char '{}' has top={} > bottom={}",
+                    name,
+                    i,
+                    ch.text,
+                    ch.bbox.top,
+                    ch.bbox.bottom
                 );
             }
         }
@@ -1298,13 +1500,19 @@ fn word_bbox_contains_constituent_chars() {
         for ch in &word.chars {
             assert!(
                 ch.bbox.x0 >= word.bbox.x0 - 1.0,
-                "word '{}' bbox x0={} should contain char '{}' x0={}", 
-                word.text, word.bbox.x0, ch.text, ch.bbox.x0
+                "word '{}' bbox x0={} should contain char '{}' x0={}",
+                word.text,
+                word.bbox.x0,
+                ch.text,
+                ch.bbox.x0
             );
             assert!(
                 ch.bbox.x1 <= word.bbox.x1 + 1.0,
-                "word '{}' bbox x1={} should contain char '{}' x1={}", 
-                word.text, word.bbox.x1, ch.text, ch.bbox.x1
+                "word '{}' bbox x1={} should contain char '{}' x1={}",
+                word.text,
+                word.bbox.x1,
+                ch.text,
+                ch.bbox.x1
             );
         }
     }
@@ -1324,7 +1532,10 @@ fn rects_have_positive_area() {
             let area = (rect.x1 - rect.x0) * (rect.bottom - rect.top);
             assert!(
                 area >= 0.0,
-                "{}: rect has negative area ({:.1}): {:?}", name, area, rect
+                "{}: rect has negative area ({:.1}): {:?}",
+                name,
+                area,
+                rect
             );
         }
     }
@@ -1337,7 +1548,11 @@ fn lines_have_positive_length() {
     let page = pdf.page(0).unwrap();
     for line in page.lines() {
         let len = ((line.x1 - line.x0).powi(2) + (line.bottom - line.top).powi(2)).sqrt();
-        assert!(len >= 0.0, "line length should be non-negative, got {:.2}", len);
+        assert!(
+            len >= 0.0,
+            "line length should be non-negative, got {:.2}",
+            len
+        );
     }
 }
 
@@ -1352,7 +1567,10 @@ fn pages_iter_yields_all_pages_in_order() {
         assert_eq!(page.page_number(), idx, "pages_iter should yield in order");
         idx += 1;
     }
-    assert_eq!(idx, count, "pages_iter should yield exactly page_count pages");
+    assert_eq!(
+        idx, count,
+        "pages_iter should yield exactly page_count pages"
+    );
 }
 
 /// Char doctop should be non-negative for all pages.
@@ -1362,7 +1580,13 @@ fn char_doctop_is_non_negative() {
     for i in 0..pdf.page_count().min(5) {
         let page = pdf.page(i).unwrap();
         for ch in page.chars() {
-            assert!(ch.doctop >= -1.0, "p{}: char '{}' has negative doctop {}", i, ch.text, ch.doctop);
+            assert!(
+                ch.doctop >= -1.0,
+                "p{}: char '{}' has negative doctop {}",
+                i,
+                ch.text,
+                ch.doctop
+            );
         }
     }
 }
@@ -1370,12 +1594,22 @@ fn char_doctop_is_non_negative() {
 /// Char size should be positive for all extracted chars.
 #[test]
 fn char_size_is_positive() {
-    let fixtures = ["issue-33-lorem-ipsum.pdf", "scotus-transcript-p1.pdf", "pdffill-demo.pdf"];
+    let fixtures = [
+        "issue-33-lorem-ipsum.pdf",
+        "scotus-transcript-p1.pdf",
+        "pdffill-demo.pdf",
+    ];
     for name in &fixtures {
         let pdf = open_pdf(name);
         let page = pdf.page(0).unwrap();
         for ch in page.chars() {
-            assert!(ch.size > 0.0, "{}: char '{}' has non-positive size {}", name, ch.text, ch.size);
+            assert!(
+                ch.size > 0.0,
+                "{}: char '{}' has non-positive size {}",
+                name,
+                ch.text,
+                ch.size
+            );
         }
     }
 }
@@ -1386,6 +1620,11 @@ fn char_fontname_is_not_empty() {
     let pdf = open_pdf("issue-33-lorem-ipsum.pdf");
     let page = pdf.page(0).unwrap();
     for ch in page.chars() {
-        assert!(!ch.fontname.is_empty(), "char '{}' at {:?} has empty fontname", ch.text, ch.bbox);
+        assert!(
+            !ch.fontname.is_empty(),
+            "char '{}' at {:?} has empty fontname",
+            ch.text,
+            ch.bbox
+        );
     }
 }

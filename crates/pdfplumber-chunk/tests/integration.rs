@@ -11,10 +11,12 @@
 use pdfplumber::Pdf;
 use pdfplumber_chunk::{Chunk, ChunkSettings, ChunkType, Chunker};
 
-const FIXTURES_DIR: &str = "crates/pdfplumber/tests/fixtures/pdfs";
-
 fn fixture_path(name: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(FIXTURES_DIR).join(name)
+    // Navigate from this crate's directory (crates/pdfplumber-chunk) up to the
+    // workspace root, then into the pdfplumber fixture directory.
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/pdfplumber/tests/fixtures/pdfs")
+        .join(name)
 }
 
 fn open_fixture(name: &str) -> Pdf {

@@ -118,6 +118,29 @@ pub fn definitions() -> Vec<Value> {
                 "required": ["path"]
             }
         }),
+        json!({
+            "name": "pdf.accessibility",
+            "description": "PDF/UA and WCAG accessibility audit. Returns violations (rule ID, severity, message, suggestion) and a compliance summary across 7 rule categories: tagging, language, alt text, color contrast, heading order, tab order, and reading order.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the PDF file." }
+                },
+                "required": ["path"]
+            }
+        }),
+        json!({
+            "name": "pdf.infer_tags",
+            "description": "Infer semantic PDF/UA tags (H1-H6, P, Table, Figure, Artifact) from visual geometry — no tagging structure required. Returns per-page tag arrays with bounding boxes and text snippets. Useful for untagged PDFs.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the PDF file." },
+                    "page": { "type": "integer", "description": "0-based page index. Omit for all pages." }
+                },
+                "required": ["path"]
+            }
+        }),
     ];
 
     #[cfg(feature = "raster")]
@@ -152,6 +175,8 @@ pub fn call(name: &str, args: Value) -> Result<Vec<Value>, String> {
         "pdf.to_markdown" => to_markdown(args),
         #[cfg(feature = "raster")]
         "pdf.render_page" => render_page(args),
+        "pdf.accessibility" => accessibility(args),
+        "pdf.infer_tags" => infer_tags(args),
         _ => Err(format!("unknown tool '{name}'")),
     }
 }
@@ -369,6 +394,92 @@ fn render_page(args: Value) -> Result<Vec<Value>, String> {
     ])
 }
 
+#[cfg(feature = "a11y")]
+fn accessibility(args: Value) -> Result<Vec<Value>, String> {
+    use pdfplumber_a11y::A11yAnalyzer;
+
+    let pdf = open(&args)?;
+    let report = A11yAnalyzer::new().analyze_with_inference(&pdf);
+
+    let violations: Vec<Value> = report
+        .violations()
+        .iter()
+        .map(|v| {
+            json!({
+                "rule_id":   v.rule_id(),
+                "severity":  format!("{:?}", v.severity()),
+                "message":   v.message(),
+                "page":      v.page(),
+                "suggestion": v.suggestion(),
+            })
+        })
+        .collect();
+
+    Ok(json_pretty(&json!({
+        "compliant":        report.is_compliant(),
+        "is_tagged":        report.is_tagged(),
+        "has_lang":         report.has_lang(),
+        "page_count":       report.page_count(),
+        "violation_count":  violations.len(),
+        "error_count":      report.error_count(),
+        "summary":          report.summary(),
+        "violations":       violations,
+    })))
+}
+
+#[cfg(not(feature = "a11y"))]
+fn accessibility(_: Value) -> Result<Vec<Value>, String> {
+    Err("a11y feature not compiled in — rebuild with --features a11y".into())
+}
+
+#[cfg(feature = "a11y")]
+fn infer_tags(args: Value) -> Result<Vec<Value>, String> {
+    use pdfplumber_a11y::TagInferrer;
+
+    let pdf = open(&args)?;
+    let inferrer = TagInferrer::new();
+
+    let tag_to_json = |tag: &pdfplumber_a11y::InferredTag| -> Value {
+        json!({
+            "role":   tag.role,
+            "text":   tag.text,
+            "page":   tag.page,
+            "bbox": {
+                "x0":     tag.bbox.x0,
+                "top":    tag.bbox.top,
+                "x1":     tag.bbox.x1,
+                "bottom": tag.bbox.bottom,
+            },
+        })
+    };
+
+    if let Some(idx) = args["page"].as_u64().map(|n| n as usize) {
+        let page = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
+        let tags: Vec<Value> = inferrer.infer_page(&page, idx).iter().map(tag_to_json).collect();
+        return Ok(json_pretty(&json!({ "page": idx, "tags": tags })));
+    }
+
+    let all: Vec<Value> = pdf
+        .pages_iter()
+        .enumerate()
+        .filter_map(|(i, result)| {
+            let page = result.ok()?;
+            let tags: Vec<Value> = inferrer.infer_page(&page, i).iter().map(tag_to_json).collect();
+            if tags.is_empty() {
+                return None;
+            }
+            Some(json!({ "page": i, "tags": tags }))
+        })
+        .collect();
+
+    Ok(json_pretty(&json!({ "pages": all })))
+}
+
+#[cfg(not(feature = "a11y"))]
+fn infer_tags(_: Value) -> Result<Vec<Value>, String> {
+    Err("a11y feature not compiled in — rebuild with --features a11y".into())
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -410,6 +521,8 @@ mod tests {
             "pdf.extract_words",
             "pdf.layout",
             "pdf.to_markdown",
+            "pdf.accessibility",
+            "pdf.infer_tags",
         ] {
             assert!(names.contains(t), "missing tool {t}");
         }

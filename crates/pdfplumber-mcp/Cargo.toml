@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 pdfplumber = { path = "../pdfplumber" }
 pdfplumber-layout = { path = "../pdfplumber-layout", optional = true }
+pdfplumber-a11y   = { path = "../pdfplumber-a11y",   optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = { version = "0.22", optional = true }
@@ -25,7 +26,8 @@ base64 = { version = "0.22", optional = true }
 # pdfplumber-raster = { path = "../pdfplumber-raster", optional = true }
 
 [features]
-default = ["layout"]
+default = ["layout", "a11y"]
 layout  = ["dep:pdfplumber-layout"]
+a11y    = ["dep:pdfplumber-a11y"]
 raster  = ["dep:base64"]  # also requires pdfplumber-raster dep once feat/rasterizer-12 merges
-full    = ["layout", "raster"]
+full    = ["layout", "a11y", "raster"]

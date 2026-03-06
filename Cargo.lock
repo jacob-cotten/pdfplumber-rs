@@ -2182,6 +2182,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "pdfplumber",
+ "pdfplumber-a11y",
  "pdfplumber-layout",
  "serde",
  "serde_json",

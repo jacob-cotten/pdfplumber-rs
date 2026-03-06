@@ -98,14 +98,15 @@ fn infer_large_text_tagged_as_heading() {
         })
         .collect();
     // heading chars (20pt — 2× body) — well above h1_ratio=1.4×
+    // Placed at y=100-120 to stay below the artifact zone (top 8% of 842pt ≈ 67pt).
     let heading_text = "Title";
     for (i, c) in heading_text.chars().enumerate() {
         chars.push(make_char(
             &c.to_string(),
             10.0 + i as f64 * 12.0,
-            50.0,
+            100.0,
             22.0 + i as f64 * 12.0,
-            70.0,
+            120.0,
             20.0,
         ));
     }

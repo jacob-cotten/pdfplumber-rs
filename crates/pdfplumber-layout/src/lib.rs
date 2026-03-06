@@ -75,7 +75,7 @@ pub use document::{Document, DocumentStats};
 pub use extractor::{extract_page_layout, LayoutOptions, PageLayout};
 pub use figures::{Figure, FigureKind};
 pub use headings::{Heading, HeadingLevel};
-pub use lists::{List, ListItem, ListKind};
+pub use lists::{extract_lists_from_section, List, ListItem, ListKind};
 pub use markdown::{
     block_to_markdown, figure_to_markdown, heading_to_markdown, paragraph_to_markdown,
     section_to_markdown, sections_to_markdown, table_to_markdown,

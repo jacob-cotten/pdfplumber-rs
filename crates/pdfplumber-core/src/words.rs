@@ -1590,13 +1590,15 @@ mod tests {
     //
     // The formula is:
     //   x_gap = max(0, max(last.x0, cur.x0) - min(last.x1, cur.x1))
-    //   split iff x_gap > x_tolerance  OR  y_diff > y_tolerance
+    //   split iff x_gap >= x_tolerance  OR  y_diff >= y_tolerance
     //
-    // The critical property: at exactly `tolerance`, chars JOIN; above → SPLIT.
+    // The critical property: at exactly `tolerance`, chars SPLIT (Python uses >=).
+    // This matches golden data where CJK uniform-grid gaps of exactly 3.0pt are
+    // separate words in Python pdfplumber's output.
 
     #[test]
-    fn x_gap_exactly_at_tolerance_chars_join() {
-        // x_gap == x_tolerance (3.0) → must join (same word)
+    fn x_gap_exactly_at_tolerance_chars_split() {
+        // x_gap == x_tolerance (3.0) → must SPLIT (Python uses >= not >)
         // last: [10, 100, 20, 112]  (x1=20)
         // cur:  [23, 100, 33, 112]  (x0=23, gap=23-20=3.0)
         let chars = vec![
@@ -1606,11 +1608,10 @@ mod tests {
         let words = WordExtractor::extract(&chars, &WordOptions::default());
         assert_eq!(
             words.len(),
-            1,
-            "x_gap == x_tolerance should produce 1 word, got {}",
+            2,
+            "x_gap == x_tolerance should split into 2 words (Python >= semantics), got {}",
             words.len()
         );
-        assert_eq!(words[0].text, "AB");
     }
 
     #[test]
@@ -1648,8 +1649,8 @@ mod tests {
     }
 
     #[test]
-    fn y_diff_exactly_at_tolerance_chars_join() {
-        // y_diff == y_tolerance (3.0) → join
+    fn y_diff_exactly_at_tolerance_chars_split() {
+        // y_diff == y_tolerance (3.0) → SPLIT (Python uses >= not >)
         // last.top = 100, cur.top = 103 → y_diff = 3.0
         let chars = vec![
             make_char("A", 10.0, 100.0, 20.0, 112.0),
@@ -1658,8 +1659,8 @@ mod tests {
         let words = WordExtractor::extract(&chars, &WordOptions::default());
         assert_eq!(
             words.len(),
-            1,
-            "y_diff == y_tolerance should join, got {} words",
+            2,
+            "y_diff == y_tolerance should split into 2 words (Python >= semantics), got {} words",
             words.len()
         );
     }

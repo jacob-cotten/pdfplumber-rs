@@ -237,8 +237,8 @@ fn extract_tables(args: Value) -> Result<Vec<Value>, String> {
 }
 
 fn extract_chars(args: Value) -> Result<Vec<Value>, String> {
-    let pdf   = open(&args)?;
     let idx   = require_page_idx(&args)?;
+    let pdf   = open(&args)?;
     let limit = args["limit"].as_u64().unwrap_or(500) as usize;
     let page  = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
 
@@ -261,8 +261,8 @@ fn extract_chars(args: Value) -> Result<Vec<Value>, String> {
 }
 
 fn extract_words(args: Value) -> Result<Vec<Value>, String> {
-    let pdf  = open(&args)?;
     let idx  = require_page_idx(&args)?;
+    let pdf  = open(&args)?;
     let page = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
 
     let words: Vec<Value> = page

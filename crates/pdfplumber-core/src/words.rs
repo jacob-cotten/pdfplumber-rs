@@ -334,7 +334,8 @@ impl WordExtractor {
         let x_gap =
             (last.bbox.x0.max(current.bbox.x0) - last.bbox.x1.min(current.bbox.x1)).max(0.0);
         let y_diff = (current.bbox.top - last.bbox.top).abs();
-        x_gap > options.x_tolerance || y_diff > options.y_tolerance
+        // Use >= to match Python pdfplumber's behaviour (split when gap equals tolerance).
+        x_gap >= options.x_tolerance || y_diff >= options.y_tolerance
     }
 
     /// Check if two vertically-adjacent chars should be split into separate words.

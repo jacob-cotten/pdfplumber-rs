@@ -4945,13 +4945,7 @@ mod tests {
     }
 
     // ===== cells_share_edge boundary conditions =====
-
-    fn make_cell(x0: f64, top: f64, x1: f64, bottom: f64) -> Cell {
-        Cell {
-            bbox: BBox::new(x0, top, x1, bottom),
-            text: None,
-        }
-    }
+    // Note: uses make_cell() defined above in this test module
 
     #[test]
     fn cells_share_right_left_vertical_edge() {

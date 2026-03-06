@@ -353,7 +353,7 @@ fn sort_in_column_order(blocks: &mut Vec<TextBlock>, column_boundaries: &[f64]) 
                 .partial_cmp(&b.bbox.top)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        blocks.extend(col.drain(..));
+        blocks.append(col);
     }
 }
 

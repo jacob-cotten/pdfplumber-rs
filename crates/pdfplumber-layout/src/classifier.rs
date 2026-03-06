@@ -28,6 +28,7 @@ pub struct FontProfile {
 
 impl FontProfile {
     /// Build a FontProfile from a slice of chars.
+    #[allow(dead_code)] // public API for external callers, not used within the crate
     pub fn from_chars(chars: &[Char]) -> Self {
         if chars.is_empty() {
             return FontProfile {
@@ -83,6 +84,7 @@ pub fn is_bold_fontname(fontname: &str) -> bool {
 }
 
 /// Returns true if `fontname` indicates an italic font.
+#[allow(dead_code)] // public API for external callers, used by FontProfile::from_chars
 pub fn is_italic_fontname(fontname: &str) -> bool {
     let lower = fontname.to_lowercase();
     lower.contains("italic") || lower.contains("oblique") || lower.contains("-it")

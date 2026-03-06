@@ -72,10 +72,10 @@ pub(crate) mod paragraphs;
 pub(crate) mod sections;
 
 pub use document::{Document, DocumentStats};
-pub use extractor::{LayoutOptions, PageLayout, extract_page_layout};
+pub use extractor::{extract_page_layout, LayoutOptions, PageLayout};
 pub use figures::{Figure, FigureKind};
 pub use headings::{Heading, HeadingLevel};
-pub use lists::{List, ListItem, ListKind};
+pub use lists::{extract_lists_from_section, List, ListItem, ListKind};
 pub use markdown::{
     block_to_markdown, figure_to_markdown, heading_to_markdown, paragraph_to_markdown,
     section_to_markdown, sections_to_markdown, table_to_markdown,
@@ -84,11 +84,7 @@ pub use paragraphs::Paragraph;
 pub use sections::Section;
 
 /// Semantic block type — the union of all layout elements on a page.
-///
-/// `#[non_exhaustive]` — new block types (e.g., `Code`, `MathEquation`,
-/// `Footnote`) may be added in minor releases as layout inference expands.
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LayoutBlock {
     /// A heading at a given level.

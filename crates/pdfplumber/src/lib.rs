@@ -111,7 +111,8 @@ pub use pdfplumber_core::{
     Hyperlink, Image, ImageContent, ImageExportOptions, ImageFilter, ImageFormat, ImageMetadata,
     Intersection, Line, LineOrientation, Orientation, PageObject, PageRegionOptions, PageRegions,
     PaintedPath, Path, PathBuilder, PathSegment, PdfError, Point, Rect, RepairOptions,
-    RepairResult, SearchMatch, SearchOptions, Severity, SignatureInfo, StandardEncoding, Strategy,
+    CertInfo, RawSignature, RepairResult, SearchMatch, SearchOptions, Severity, SignatureInfo,
+    SignatureVerification, StandardEncoding, Strategy,
     StructElement, SvgDebugOptions, SvgOptions, SvgRenderer, Table, TableFinder, TableFinderDebug,
     TableQuality, TableSettings, TextBlock, TextDirection, TextLine, TextOptions, UnicodeNorm,
     ValidationIssue, Word, WordExtractor, WordOptions, blocks_to_text, cells_to_tables,
@@ -126,6 +127,28 @@ pub use pdfplumber_parse::{
     self, CharEvent, ContentHandler, ImageEvent, LopdfBackend, LopdfDocument, LopdfPage,
     PageGeometry, PaintOp, PathEvent, PdfBackend,
 };
+
+/// Cryptographic signature verification (requires `signatures` feature).
+///
+/// This module exposes [`verify_signature`] and is only compiled when the
+/// `signatures` feature is enabled. Import it directly:
+///
+/// ```no_run
+/// #[cfg(feature = "signatures")]
+/// use pdfplumber::signatures;
+///
+/// let pdf = pdfplumber::Pdf::open_file("signed.pdf", None).unwrap();
+/// let file_bytes = std::fs::read("signed.pdf").unwrap();
+/// for (i, raw) in pdf.raw_signatures().unwrap().iter().enumerate() {
+///     #[cfg(feature = "signatures")]
+///     {
+///         let v = signatures::verify_signature(raw, &file_bytes);
+///         println!("sig {i}: valid={} signer={:?}", v.is_valid, v.signer_cn);
+///     }
+/// }
+/// ```
+#[cfg(feature = "signatures")]
+pub mod signatures;
 
 #[cfg(test)]
 mod tests {

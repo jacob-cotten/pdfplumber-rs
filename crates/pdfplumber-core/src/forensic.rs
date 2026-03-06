@@ -197,9 +197,9 @@ pub enum WatermarkKind {
     InvisibleText,
     /// Identical text block found on N or more consecutive pages.
     RepeatedTextBlock {
-        /// Number of pages containing this repeated text block.
+        /// Number of pages on which this text block was detected.
         page_count: usize,
-        /// Short preview of the repeated text (first ~40 chars).
+        /// Short preview of the repeated text content.
         text_preview: String,
     },
     /// A graphics object (rect or image) spanning most of the page with low opacity.

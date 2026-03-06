@@ -332,9 +332,8 @@ pub fn extend_edges_to_bbox(
 
     // Does the V at `vx` cover `h_y` within y-tolerance?
     let v_covers_y = |vx: f64, h_y: f64| -> bool {
-        v_span_at(vx).map_or(false, |(vt, vb)| {
-            h_y >= vt - join_y_tolerance && h_y <= vb + join_y_tolerance
-        })
+        v_span_at(vx)
+            .is_some_and(|(vt, vb)| h_y >= vt - join_y_tolerance && h_y <= vb + join_y_tolerance)
     };
 
     // Phase 1: Extend H edges to outermost covering V on each side.
@@ -354,8 +353,7 @@ pub fn extend_edges_to_bbox(
             // that covers h_y.  v_xs is sorted ascending so .next() gives smallest.
             if let Some(&target) = v_xs
                 .iter()
-                .filter(|&&vx| vx < edge.x0 - join_x_tolerance && v_covers_y(vx, h_y))
-                .next()
+                .find(|&&vx| vx < edge.x0 - join_x_tolerance && v_covers_y(vx, h_y))
             // smallest vx < edge.x0 (outermost left)
             {
                 edge.x0 = target;
@@ -420,15 +418,11 @@ pub fn extend_edges_to_bbox(
         }
 
         // Extend bottom downward — same small-gap limit.
-        if let Some(&target) = h_ys
-            .iter()
-            .filter(|&&hy| {
-                hy > edge.bottom + join_y_tolerance
-                    && hy - edge.bottom <= max_bridge
-                    && h_covers_x(hy, v_x)
-            })
-            .next()
-        {
+        if let Some(&target) = h_ys.iter().find(|&&hy| {
+            hy > edge.bottom + join_y_tolerance
+                && hy - edge.bottom <= max_bridge
+                && h_covers_x(hy, v_x)
+        }) {
             edge.bottom = target;
         }
     }

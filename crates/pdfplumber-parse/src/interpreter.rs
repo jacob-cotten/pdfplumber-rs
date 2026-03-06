@@ -1083,7 +1083,7 @@ fn show_string_cid_vertical(
 
     while i < string_bytes.len() {
         let char_code = if i + 1 < string_bytes.len() {
-            let code = u32::from(string_bytes[i]) << 8 | u32::from(string_bytes[i + 1]);
+            let code = (u32::from(string_bytes[i]) << 8) | u32::from(string_bytes[i + 1]);
             i += 2;
             code
         } else {
@@ -1963,7 +1963,7 @@ fn decode_stream(stream: &lopdf::Stream) -> Result<Vec<u8>, BackendError> {
 mod tests {
     use super::*;
     use crate::handler::{CharEvent, ContentHandler, ImageEvent};
-    use lopdf::Object;
+    use lopdf::{Object, dictionary};
 
     // --- Collecting handler ---
 

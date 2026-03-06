@@ -16,7 +16,7 @@ doctest = false
 [dependencies]
 pdfplumber = { path = "../pdfplumber", default-features = false }
 pdfplumber-core = { path = "../pdfplumber-core" }
-tiny-skia = { version = "0.11", default-features = false, features = ["std", "png"] }
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "png-format"] }
 fontdue = "0.9"
 
 [dev-dependencies]

@@ -22,13 +22,7 @@ use std::collections::HashMap;
 /// This is the smallest Noto Sans that still covers ASCII + common Latin-1.
 /// At ~40 KB it is acceptable to embed. For production font fidelity, callers
 /// should supply embedded font bytes via [`FontCache::with_fonts`].
-static FALLBACK_FONT_BYTES: &[u8] =
-    include_bytes!("../fonts/NotoSans-Regular-subset.ttf");
-
-/// A loaded fontdue font with its name.
-struct CachedFont {
-    font: fontdue::Font,
-}
+static FALLBACK_FONT_BYTES: &[u8] = include_bytes!("../fonts/NotoSans-Regular-subset.ttf");
 
 /// Per-render font cache.
 ///
@@ -101,11 +95,7 @@ impl FontCache {
     /// "Helvetica", etc. We normalise the name and search a list of directories.
     #[cfg(target_os = "macos")]
     fn find_system_font(fontname: &str) -> Option<fontdue::Font> {
-        let dirs = [
-            "/System/Library/Fonts",
-            "/Library/Fonts",
-            "~/Library/Fonts",
-        ];
+        let dirs = ["/System/Library/Fonts", "/Library/Fonts", "~/Library/Fonts"];
         Self::search_dirs(&dirs, fontname)
     }
 
@@ -139,7 +129,9 @@ impl FontCache {
 
         for dir in dirs {
             let dir = dir.replace('~', &std::env::var("HOME").unwrap_or_default());
-            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let path = entry.path();
                 let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {

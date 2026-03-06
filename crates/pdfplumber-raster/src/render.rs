@@ -108,7 +108,12 @@ impl RenderResult {
 pub enum RasterError {
     /// The page dimensions, combined with the scale factor, produce a pixel
     /// buffer that exceeds a safe allocation limit (16 000 × 16 000 px).
-    DimensionsTooLarge { width_px: u32, height_px: u32 },
+    DimensionsTooLarge {
+        /// Requested width in pixels.
+        width_px: u32,
+        /// Requested height in pixels.
+        height_px: u32,
+    },
     /// PNG encoding failed.
     PngEncodeError(String),
     /// Pixmap allocation failed (typically OOM).
@@ -118,7 +123,10 @@ pub enum RasterError {
 impl std::fmt::Display for RasterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DimensionsTooLarge { width_px, height_px } => write!(
+            Self::DimensionsTooLarge {
+                width_px,
+                height_px,
+            } => write!(
                 f,
                 "page dimensions too large for rasterization: {width_px}×{height_px} px (max 16000×16000)"
             ),
@@ -157,11 +165,14 @@ impl Rasterizer {
         let height_px = (height_pt * scale as f64).ceil() as u32;
 
         if width_px > MAX_DIM_PX || height_px > MAX_DIM_PX {
-            return Err(RasterError::DimensionsTooLarge { width_px, height_px });
+            return Err(RasterError::DimensionsTooLarge {
+                width_px,
+                height_px,
+            });
         }
 
-        let mut pixmap = Pixmap::new(width_px, height_px)
-            .ok_or(RasterError::PixmapAllocationFailed)?;
+        let mut pixmap =
+            Pixmap::new(width_px, height_px).ok_or(RasterError::PixmapAllocationFailed)?;
 
         // 1. Background.
         let [br, bg, bb] = self.opts.background;
@@ -357,7 +368,13 @@ fn render_curves_filled(curves: &[Curve], pixmap: &mut Pixmap, scale: f32) {
         paint.anti_alias = true;
 
         if let Some(path) = build_curve_path(curve, scale) {
-            pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+            pixmap.fill_path(
+                &path,
+                &paint,
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
         }
     }
 }
@@ -437,7 +454,7 @@ fn render_text(
         let text_color = ch
             .non_stroking_color
             .as_ref()
-            .map(|c| to_skia_color(c))
+            .map(to_skia_color)
             .unwrap_or_else(|| tiny_skia::ColorU8::from_rgba(0, 0, 0, 255));
 
         // Font size in pixels at the render scale.
@@ -498,12 +515,12 @@ fn render_text(
                 let dst = &mut pixels[idx];
                 // Alpha-composite text color over existing pixel (pre-multiplied).
                 let inv_alpha = 255 - alpha as u32;
-                let new_r = (tr as u32 * alpha as u32 / 255
-                    + dst.red() as u32 * inv_alpha / 255) as u8;
-                let new_g = (tg as u32 * alpha as u32 / 255
-                    + dst.green() as u32 * inv_alpha / 255) as u8;
-                let new_b = (tb as u32 * alpha as u32 / 255
-                    + dst.blue() as u32 * inv_alpha / 255) as u8;
+                let new_r =
+                    (tr as u32 * alpha as u32 / 255 + dst.red() as u32 * inv_alpha / 255) as u8;
+                let new_g =
+                    (tg as u32 * alpha as u32 / 255 + dst.green() as u32 * inv_alpha / 255) as u8;
+                let new_b =
+                    (tb as u32 * alpha as u32 / 255 + dst.blue() as u32 * inv_alpha / 255) as u8;
                 *dst = tiny_skia::PremultipliedColorU8::from_rgba(new_r, new_g, new_b, 255)
                     .unwrap_or(*dst);
             }
@@ -523,7 +540,12 @@ mod tests {
     fn make_char(text: &str, x0: f64, top: f64, x1: f64, bottom: f64, size: f64) -> Char {
         Char {
             text: text.to_owned(),
-            bbox: BBox { x0, top, x1, bottom },
+            bbox: BBox {
+                x0,
+                top,
+                x1,
+                bottom,
+            },
             fontname: "Helvetica".to_owned(),
             size,
             doctop: top,
@@ -560,7 +582,10 @@ mod tests {
     fn render_empty_page_produces_png() {
         use pdfplumber::Page;
         let page = Page::new(0, 100.0, 100.0, vec![]);
-        let opts = RasterOptions { scale: 1.0, ..Default::default() };
+        let opts = RasterOptions {
+            scale: 1.0,
+            ..Default::default()
+        };
         let result = Rasterizer::new(opts).render_page(&page).unwrap();
         assert!(is_png(&result.png));
         assert_eq!(result.page_number, 0);
@@ -573,7 +598,10 @@ mod tests {
     fn render_result_dimensions_match_scale() {
         use pdfplumber::Page;
         let page = Page::new(0, 200.0, 300.0, vec![]);
-        let opts = RasterOptions { scale: 2.0, ..Default::default() };
+        let opts = RasterOptions {
+            scale: 2.0,
+            ..Default::default()
+        };
         let result = Rasterizer::new(opts).render_page(&page).unwrap();
         assert_eq!(result.width_px, 400);
         assert_eq!(result.height_px, 600);
@@ -584,7 +612,10 @@ mod tests {
         use pdfplumber::Page;
         let rect = make_rect(10.0, 10.0, 100.0, 100.0, true, true);
         let page = Page::with_geometry(0, 200.0, 200.0, vec![], vec![], vec![rect], vec![]);
-        let opts = RasterOptions { scale: 1.0, ..Default::default() };
+        let opts = RasterOptions {
+            scale: 1.0,
+            ..Default::default()
+        };
         let result = Rasterizer::new(opts).render_page(&page).unwrap();
         assert!(is_png(&result.png));
     }
@@ -597,7 +628,10 @@ mod tests {
             make_char("i", 22.0, 20.0, 28.0, 32.0, 12.0),
         ];
         let page = Page::new(0, 200.0, 200.0, chars);
-        let opts = RasterOptions { scale: 1.5, ..Default::default() };
+        let opts = RasterOptions {
+            scale: 1.5,
+            ..Default::default()
+        };
         let result = Rasterizer::new(opts).render_page(&page).unwrap();
         assert!(is_png(&result.png));
     }
@@ -606,9 +640,15 @@ mod tests {
     fn oversized_page_returns_error() {
         use pdfplumber::Page;
         let page = Page::new(0, 10_000.0, 10_000.0, vec![]);
-        let opts = RasterOptions { scale: 2.0, ..Default::default() };
+        let opts = RasterOptions {
+            scale: 2.0,
+            ..Default::default()
+        };
         let result = Rasterizer::new(opts).render_page(&page);
-        assert!(matches!(result, Err(RasterError::DimensionsTooLarge { .. })));
+        assert!(matches!(
+            result,
+            Err(RasterError::DimensionsTooLarge { .. })
+        ));
     }
 
     #[test]
@@ -616,7 +656,11 @@ mod tests {
         use pdfplumber::Page;
         let chars = vec![make_char("X", 10.0, 10.0, 20.0, 20.0, 10.0)];
         let page = Page::new(0, 100.0, 100.0, chars);
-        let opts = RasterOptions { scale: 1.0, render_text: false, ..Default::default() };
+        let opts = RasterOptions {
+            scale: 1.0,
+            render_text: false,
+            ..Default::default()
+        };
         let result = Rasterizer::new(opts).render_page(&page).unwrap();
         assert!(is_png(&result.png));
     }
@@ -638,7 +682,9 @@ mod tests {
     fn render_result_page_number_preserved() {
         use pdfplumber::Page;
         let page = Page::new(7, 100.0, 100.0, vec![]);
-        let result = Rasterizer::new(RasterOptions::default()).render_page(&page).unwrap();
+        let result = Rasterizer::new(RasterOptions::default())
+            .render_page(&page)
+            .unwrap();
         assert_eq!(result.page_number, 7);
     }
 }

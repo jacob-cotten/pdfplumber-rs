@@ -60,7 +60,10 @@ mod tests {
     #[test]
     fn gray_1_is_white() {
         let c = to_skia_color(&Color::Gray(1.0));
-        assert_eq!((c.red(), c.green(), c.blue(), c.alpha()), (255, 255, 255, 255));
+        assert_eq!(
+            (c.red(), c.green(), c.blue(), c.alpha()),
+            (255, 255, 255, 255)
+        );
     }
 
     #[test]

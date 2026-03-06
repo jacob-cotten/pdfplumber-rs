@@ -24,7 +24,6 @@ fn open_fixture(path: &Path) -> Pdf {
 // ==================== Text extraction on 90° rotated page ====================
 
 #[test]
-#[ignore = "vertical text (90° rotation) produces one word per line; extract_text joins with newlines instead of spaces"]
 fn rotated_90_extracts_correct_text() {
     let pdf = open_fixture(&generated("rotated_pages.pdf"));
     let page = pdf.page(1).unwrap();
@@ -135,7 +134,6 @@ fn rotated_180_page_dimensions_match_original() {
 // ==================== Text extraction on 270° rotated page ====================
 
 #[test]
-#[ignore = "vertical text (270° rotation) produces one word per line; extract_text joins with newlines instead of spaces"]
 fn rotated_270_extracts_correct_text() {
     let pdf = open_fixture(&generated("rotated_pages.pdf"));
     let page = pdf.page(3).unwrap();
@@ -195,8 +193,41 @@ fn mixed_rotation_document_has_correct_page_count() {
     assert_eq!(pdf.page_count(), 4);
 }
 
+/// All-pages test covering 0°, 90°, 180°, and 270° rotations in one document.
+/// 90° and 270° are fixed; 180° char-reversal is tracked in issue #XXX.
 #[test]
-#[ignore = "90° and 270° vertical text produces one word per line; extract_text joins with newlines instead of spaces"]
+fn mixed_rotation_0_and_90_and_270_extract_correctly() {
+    let pdf = open_fixture(&generated("rotated_pages.pdf"));
+    // Page 0: 0° — standard horizontal text
+    let page0 = pdf.page(0).unwrap();
+    let text0 = page0.extract_text(&TextOptions::default());
+    assert!(
+        text0.contains("This page has rotation = 0 degrees"),
+        "page 0 should contain expected text, got: {:?}",
+        text0.trim()
+    );
+
+    // Page 1: 90° — fixed by cluster_vertical_words_into_lines
+    let page1 = pdf.page(1).unwrap();
+    let text1 = page1.extract_text(&TextOptions::default());
+    assert!(
+        text1.contains("This page has rotation = 90 degrees"),
+        "page 1 should contain expected text, got: {:?}",
+        text1.trim()
+    );
+
+    // Page 3: 270° — fixed by cluster_vertical_words_into_lines + Btt char reversal
+    let page3 = pdf.page(3).unwrap();
+    let text3 = page3.extract_text(&TextOptions::default());
+    assert!(
+        text3.contains("This page has rotation = 270 degrees"),
+        "page 3 should contain expected text, got: {:?}",
+        text3.trim()
+    );
+}
+
+#[test]
+#[ignore = "180° char-reversal in extract_text: physically-LTR Rtl chars produce reversed words; tracked separately"]
 fn mixed_rotation_all_pages_extract_correctly() {
     let pdf = open_fixture(&generated("rotated_pages.pdf"));
     let expected_texts = [

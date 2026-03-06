@@ -13,7 +13,12 @@ use crate::unicode_norm::UnicodeNorm;
 ///
 /// These errors indicate conditions that prevent further processing
 /// of the PDF or current operation.
+///
+/// This enum is `#[non_exhaustive]` — new variants may be added in minor
+/// releases as new PDF features and error categories are recognised. Match
+/// against it with a `_ =>` arm or use the typed accessors.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum PdfError {
     /// Error parsing PDF structure or syntax.
     ParseError(String),
@@ -75,7 +80,11 @@ impl From<std::io::Error> for PdfError {
 /// Each variant represents a specific category of non-fatal issue that
 /// can occur during PDF extraction. Use [`Other`](ExtractWarningCode::Other)
 /// for custom or uncategorized warnings.
+///
+/// This enum is `#[non_exhaustive]` — new warning categories will be added
+/// as the library gains coverage of more PDF constructs.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),

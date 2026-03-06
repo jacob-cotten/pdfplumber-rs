@@ -11,7 +11,11 @@ use crate::path::{Path, PathBuilder};
 ///
 /// Supports the standard PDF color spaces: DeviceGray, DeviceRGB,
 /// DeviceCMYK, and other (e.g., indexed, ICC-based) spaces.
+///
+/// `#[non_exhaustive]` — additional color spaces (Lab, CalGray, Separation,
+/// DeviceN) may be added in minor releases as the color layer expands.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Color {
     /// DeviceGray: single component in [0.0, 1.0].

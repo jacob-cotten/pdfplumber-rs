@@ -125,7 +125,11 @@ impl Image {
 ///
 /// Maps to the `/Filter` entry in a PDF image XObject stream dictionary.
 /// Used to identify how image data was encoded in the PDF.
+///
+/// `#[non_exhaustive]` — the PDF spec and extensions define additional filters
+/// (e.g., `Crypt`, `ASCII85Decode`); new variants will be added in minor releases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImageFilter {
     /// JPEG compression (DCTDecode).
@@ -192,7 +196,11 @@ impl ImageFilter {
 }
 
 /// Format of extracted image data.
+///
+/// `#[non_exhaustive]` — new formats (e.g., AVIF, WebP via future PDF extensions)
+/// may be added in minor releases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImageFormat {
     /// JPEG image (DCTDecode filter).

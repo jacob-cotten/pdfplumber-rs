@@ -40,10 +40,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map(|h| format!("H{}: {}", h.level as u8, h.text()))
             .unwrap_or_else(|| "(untitled)".into());
 
-        let n_para = section.paragraphs().len();
+        let paras: Vec<_> = section.paragraphs().collect();
+        let n_para = paras.len();
         println!("[§{}] {}  ({n_para} paragraph(s))", i + 1, heading);
 
-        for para in section.paragraphs().iter().take(2) {
+        for para in paras.iter().take(2) {
             let text = para.text();
             let preview = text
                 .char_indices()
@@ -61,7 +62,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Block-type tally ──────────────────────────────────────────────────
     let (mut h, mut p, mut t, mut f) = (0usize, 0, 0, 0);
-    for block in doc.blocks() {
+    for block in doc.all_blocks() {
         match block {
             LayoutBlock::Heading(_) => h += 1,
             LayoutBlock::Paragraph(_) => p += 1,

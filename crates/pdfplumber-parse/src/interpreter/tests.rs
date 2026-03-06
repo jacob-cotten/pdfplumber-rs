@@ -4,8 +4,6 @@ use super::*;
 use crate::handler::{CharEvent, ContentHandler, ImageEvent};
 use lopdf::Object;
 
-use lopdf::Object;
-
 // --- Collecting handler ---
 
 struct CollectingHandler {

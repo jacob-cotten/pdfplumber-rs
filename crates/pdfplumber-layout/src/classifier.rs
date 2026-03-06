@@ -15,6 +15,7 @@ const HEADING_MAX_CHARS: usize = 160;
 
 /// Font classification result for a sequence of characters.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub struct FontProfile {
     /// Most common (modal) font size across the chars — body baseline.
     pub body_size: f64,
@@ -28,6 +29,7 @@ pub struct FontProfile {
 
 impl FontProfile {
     /// Build a FontProfile from a slice of chars.
+    #[allow(dead_code)]
     pub fn from_chars(chars: &[Char]) -> Self {
         if chars.is_empty() {
             return FontProfile {
@@ -38,12 +40,8 @@ impl FontProfile {
             };
         }
         let mean_size = chars.iter().map(|c| c.size).sum::<f64>() / chars.len() as f64;
-        let has_bold = chars
-            .iter()
-            .any(|c| is_bold_fontname(&c.fontname));
-        let has_italic = chars
-            .iter()
-            .any(|c| is_italic_fontname(&c.fontname));
+        let has_bold = chars.iter().any(|c| is_bold_fontname(&c.fontname));
+        let has_italic = chars.iter().any(|c| is_italic_fontname(&c.fontname));
         // body_size is filled in after whole-page analysis; default to mean
         FontProfile {
             body_size: mean_size,
@@ -83,6 +81,7 @@ pub fn is_bold_fontname(fontname: &str) -> bool {
 }
 
 /// Returns true if `fontname` indicates an italic font.
+#[allow(dead_code)]
 pub fn is_italic_fontname(fontname: &str) -> bool {
     let lower = fontname.to_lowercase();
     lower.contains("italic") || lower.contains("oblique") || lower.contains("-it")
@@ -92,11 +91,7 @@ pub fn is_italic_fontname(fontname: &str) -> bool {
 /// is a heading candidate, given the page body baseline.
 ///
 /// Returns true if the block qualifies as a heading.
-pub fn is_heading_candidate(
-    block_chars: &[Char],
-    text_len: usize,
-    body_baseline: f64,
-) -> bool {
+pub fn is_heading_candidate(block_chars: &[Char], text_len: usize, body_baseline: f64) -> bool {
     if block_chars.is_empty() || text_len == 0 {
         return false;
     }
@@ -148,7 +143,10 @@ mod tests {
         let mut chars: Vec<Char> = (0..100).map(|_| make_char(10.0, "Helvetica")).collect();
         chars.extend((0..10).map(|_| make_char(18.0, "Helvetica-Bold")));
         let baseline = compute_body_baseline(&chars);
-        assert!((baseline - 10.0).abs() < 0.5, "expected ~10pt, got {baseline}");
+        assert!(
+            (baseline - 10.0).abs() < 0.5,
+            "expected ~10pt, got {baseline}"
+        );
     }
 
     #[test]

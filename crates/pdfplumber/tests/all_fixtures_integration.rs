@@ -526,7 +526,8 @@ fn table_curves_table_has_multiple_rows() {
 #[test]
 fn table_curves_has_rects() {
     let pdf = open_pdf("table-curves-example.pdf");
-    let rects = pdf.page(0).unwrap().rects();
+    let page = pdf.page(0).unwrap();
+    let rects = page.rects();
     assert!(!rects.is_empty(), "table-curves should have rect graphics");
 }
 
@@ -548,7 +549,7 @@ fn annotations_has_chars() {
 fn annotations_has_annotation_objects() {
     let pdf = open_pdf("annotations.pdf");
     let page = pdf.page(0).unwrap();
-    let annotations = page.annotations();
+    let annotations = page.annots();
     assert!(
         !annotations.is_empty(),
         "annotations.pdf should have annotation objects"

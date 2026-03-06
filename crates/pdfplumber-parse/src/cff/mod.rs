@@ -567,4 +567,4 @@ fn extract_charstring_width(data: &[u8], default_width_x: f64, nominal_width_x: 
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

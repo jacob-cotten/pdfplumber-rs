@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::handler::{CharEvent, ContentHandler, ImageEvent};
-use pdfplumber_core::PdfError;
+use pdfplumber_core::{FieldType, PdfError};
 
 fn create_test_pdf(page_count: usize) -> Vec<u8> {
     use lopdf::{Document, Object, ObjectId, dictionary};

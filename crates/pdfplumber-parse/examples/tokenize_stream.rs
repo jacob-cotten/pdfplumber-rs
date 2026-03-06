@@ -35,9 +35,9 @@ fn print_ops(label: &str, stream: &[u8]) {
                     .collect::<Vec<_>>()
                     .join("  ");
                 if operands.is_empty() {
-                    println!("   {:6}", op.operator);
+                    println!("   {:6}", op.name);
                 } else {
-                    println!("   {:6}  ←  {operands}", op.operator);
+                    println!("   {:6}  ←  {operands}", op.name);
                 }
             }
         }
@@ -67,16 +67,13 @@ fn main() {
     let broken: &[u8] = b"BT /F1 12 Tf (valid text) Tj @@INVALID@@ ET";
     println!("── lenient mode (malformed input) ──────────────────────────────");
     println!("   input: {}", String::from_utf8_lossy(broken));
-    let recovered = tokenize_lenient(broken);
+    let (recovered, skipped) = tokenize_lenient(broken);
     println!(
-        "   recovered {}/{} operator(s) past garbage token",
+        "   recovered {} operator(s), skipped {} garbage token(s)",
         recovered.len(),
-        tokenize(broken)
-            .map(|v| v.len())
-            .unwrap_or(0)
-            .max(recovered.len())
+        skipped.len()
     );
     for op in &recovered {
-        println!("   {:6}  ({} operand(s))", op.operator, op.operands.len());
+        println!("   {:6}  ({} operand(s))", op.name, op.operands.len());
     }
 }

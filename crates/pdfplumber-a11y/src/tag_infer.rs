@@ -128,7 +128,7 @@ impl TagInferrer {
 
         // Figures first (always behind text in painter model)
         for img in page.images() {
-            tags.push(InferredTag::figure(img.bbox, page_idx));
+            tags.push(InferredTag::figure(img.bbox(), page_idx));
         }
 
         // Tables (detected via pdfplumber's table algorithm)
@@ -186,10 +186,13 @@ impl TagInferrer {
 
     /// Infer structure tags for all pages of a document.
     pub fn infer_document(&self, pdf: &pdfplumber::Pdf) -> Vec<InferredTag> {
-        pdf.pages().flat_map(|page| {
+        let mut tags = Vec::new();
+        for page_result in pdf.pages_iter() {
+            let Ok(page) = page_result else { continue };
             let idx = page.page_number();
-            self.infer_page(&page, idx)
-        }).collect()
+            tags.extend(self.infer_page(&page, idx));
+        }
+        tags
     }
 
     /// Count how many inferred tags need manual review.

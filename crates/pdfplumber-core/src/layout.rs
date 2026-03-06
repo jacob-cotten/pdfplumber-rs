@@ -80,16 +80,37 @@ impl Default for TextOptions {
 
 /// Cluster words into text lines based on y-proximity.
 ///
-/// Words whose vertical midpoints are within `y_tolerance` of a line's
-/// vertical midpoint are grouped into the same line. Words within each
-/// line are sorted left-to-right.
+/// For horizontal text (Ltr/Rtl): words whose vertical midpoints are within
+/// `y_tolerance` are grouped into the same line, sorted left-to-right within
+/// each line, and lines are sorted top-to-bottom.
 ///
-/// Uses y-coordinate bucketing for O(n log n) performance instead of O(n²).
+/// For vertical text (Ttb/Btt, e.g. 90°/270° rotated pages): words whose
+/// horizontal midpoints are within `y_tolerance` (reused as x-tolerance) are
+/// grouped into the same column-line, sorted top-to-bottom within each column,
+/// and columns are sorted left-to-right (Ttb) or right-to-left (Btt).
+///
+/// Uses coordinate bucketing for O(n log n) performance instead of O(n²).
 pub fn cluster_words_into_lines(words: &[Word], y_tolerance: f64) -> Vec<TextLine> {
     if words.is_empty() {
         return Vec::new();
     }
 
+    // Detect dominant text direction: if majority are vertical, use x-clustering.
+    let vertical_count = words
+        .iter()
+        .filter(|w| matches!(w.direction, TextDirection::Ttb | TextDirection::Btt))
+        .count();
+    let is_vertical_page = vertical_count > words.len() / 2;
+
+    if is_vertical_page {
+        return cluster_vertical_words_into_lines(words, y_tolerance);
+    }
+
+    cluster_horizontal_words_into_lines(words, y_tolerance)
+}
+
+/// Cluster horizontal (Ltr/Rtl) words into lines by y-proximity.
+fn cluster_horizontal_words_into_lines(words: &[Word], y_tolerance: f64) -> Vec<TextLine> {
     let mut sorted: Vec<&Word> = words.iter().collect();
     sorted.sort_by(|a, b| {
         a.bbox
@@ -105,19 +126,12 @@ pub fn cluster_words_into_lines(words: &[Word], y_tolerance: f64) -> Vec<TextLin
     // bbox grows (union with a new word), its bucket registration is updated.
     let mut bucket_to_line: HashMap<i64, Vec<usize>> = HashMap::new();
 
-    let bucket_size = if y_tolerance > 0.0 {
-        y_tolerance
-    } else {
-        // For zero tolerance, use a very small bucket size
-        1e-9
-    };
+    let bucket_size = if y_tolerance > 0.0 { y_tolerance } else { 1e-9 };
 
     for word in sorted {
         let word_mid_y = (word.bbox.top + word.bbox.bottom) / 2.0;
         let word_bucket = (word_mid_y / bucket_size).floor() as i64;
 
-        // Check adjacent buckets (word_bucket - 1, word_bucket, word_bucket + 1)
-        // to find a matching line within y_tolerance
         let mut matched_line_idx: Option<usize> = None;
         'outer: for delta in [-1i64, 0, 1] {
             let check_bucket = word_bucket + delta;
@@ -134,15 +148,12 @@ pub fn cluster_words_into_lines(words: &[Word], y_tolerance: f64) -> Vec<TextLin
         }
 
         if let Some(idx) = matched_line_idx {
-            // Remove old bucket registration for this line
             let old_mid_y = (lines[idx].bbox.top + lines[idx].bbox.bottom) / 2.0;
             let old_bucket = (old_mid_y / bucket_size).floor() as i64;
 
-            // Update the line
             lines[idx].bbox = lines[idx].bbox.union(&word.bbox);
             lines[idx].words.push(word.clone());
 
-            // Re-register in the new bucket if mid_y changed
             let new_mid_y = (lines[idx].bbox.top + lines[idx].bbox.bottom) / 2.0;
             let new_bucket = (new_mid_y / bucket_size).floor() as i64;
             if new_bucket != old_bucket {
@@ -164,7 +175,6 @@ pub fn cluster_words_into_lines(words: &[Word], y_tolerance: f64) -> Vec<TextLin
     }
 
     // Sort words within each line by reading direction.
-    // For Rtl lines (e.g., 180° rotated text), sort right-to-left.
     for line in &mut lines {
         let rtl_count = line
             .words
@@ -172,18 +182,113 @@ pub fn cluster_words_into_lines(words: &[Word], y_tolerance: f64) -> Vec<TextLin
             .filter(|w| w.direction == TextDirection::Rtl)
             .count();
         if rtl_count > line.words.len() / 2 {
-            // Majority Rtl: sort by x0 descending (right-to-left)
             line.words
                 .sort_by(|a, b| b.bbox.x0.partial_cmp(&a.bbox.x0).unwrap());
         } else {
-            // Default Ltr: sort by x0 ascending (left-to-right)
             line.words
                 .sort_by(|a, b| a.bbox.x0.partial_cmp(&b.bbox.x0).unwrap());
         }
     }
 
-    // Sort lines top-to-bottom
     lines.sort_by(|a, b| a.bbox.top.partial_cmp(&b.bbox.top).unwrap());
+    lines
+}
+
+/// Cluster vertical (Ttb/Btt) words into lines by x-proximity.
+///
+/// On a 90°/270° rotated page each "line" of text appears as a vertical column
+/// of words that share the same x-range. We cluster by x-midpoint instead of
+/// y-midpoint, sort words within each column top-to-bottom, and sort columns
+/// left-to-right (Ttb/90°) or right-to-left (Btt/270°).
+fn cluster_vertical_words_into_lines(words: &[Word], x_tolerance: f64) -> Vec<TextLine> {
+    let mut sorted: Vec<&Word> = words.iter().collect();
+    // Sort by x-midpoint first, then top within the same x-band
+    sorted.sort_by(|a, b| {
+        let ax = (a.bbox.x0 + a.bbox.x1) / 2.0;
+        let bx = (b.bbox.x0 + b.bbox.x1) / 2.0;
+        ax.partial_cmp(&bx)
+            .unwrap()
+            .then(a.bbox.top.partial_cmp(&b.bbox.top).unwrap())
+    });
+
+    let mut lines: Vec<TextLine> = Vec::new();
+    let mut bucket_to_line: HashMap<i64, Vec<usize>> = HashMap::new();
+    let bucket_size = if x_tolerance > 0.0 { x_tolerance } else { 1e-9 };
+
+    for word in sorted {
+        let word_mid_x = (word.bbox.x0 + word.bbox.x1) / 2.0;
+        let word_bucket = (word_mid_x / bucket_size).floor() as i64;
+
+        let mut matched_line_idx: Option<usize> = None;
+        'outer: for delta in [-1i64, 0, 1] {
+            let check_bucket = word_bucket + delta;
+            if let Some(line_indices) = bucket_to_line.get(&check_bucket) {
+                for &line_idx in line_indices {
+                    let line = &lines[line_idx];
+                    let line_mid_x = (line.bbox.x0 + line.bbox.x1) / 2.0;
+                    if (word_mid_x - line_mid_x).abs() <= x_tolerance {
+                        matched_line_idx = Some(line_idx);
+                        break 'outer;
+                    }
+                }
+            }
+        }
+
+        if let Some(idx) = matched_line_idx {
+            let old_mid_x = (lines[idx].bbox.x0 + lines[idx].bbox.x1) / 2.0;
+            let old_bucket = (old_mid_x / bucket_size).floor() as i64;
+
+            lines[idx].bbox = lines[idx].bbox.union(&word.bbox);
+            lines[idx].words.push(word.clone());
+
+            let new_mid_x = (lines[idx].bbox.x0 + lines[idx].bbox.x1) / 2.0;
+            let new_bucket = (new_mid_x / bucket_size).floor() as i64;
+            if new_bucket != old_bucket {
+                if let Some(indices) = bucket_to_line.get_mut(&old_bucket) {
+                    indices.retain(|&i| i != idx);
+                }
+                bucket_to_line.entry(new_bucket).or_default().push(idx);
+            }
+        } else {
+            let new_idx = lines.len();
+            let mid_x = (word.bbox.x0 + word.bbox.x1) / 2.0;
+            let bucket = (mid_x / bucket_size).floor() as i64;
+            lines.push(TextLine {
+                words: vec![word.clone()],
+                bbox: word.bbox,
+            });
+            bucket_to_line.entry(bucket).or_default().push(new_idx);
+        }
+    }
+
+    let btt_count = words
+        .iter()
+        .filter(|w| w.direction == TextDirection::Btt)
+        .count();
+    let is_btt = btt_count > words.len() / 2;
+
+    // Sort words within each column by reading order:
+    // - Ttb (90°): top-to-bottom (ascending y)
+    // - Btt (270°): bottom-to-top (descending y) — reading goes up the page
+    for line in &mut lines {
+        if is_btt {
+            line.words
+                .sort_by(|a, b| b.bbox.top.partial_cmp(&a.bbox.top).unwrap());
+        } else {
+            line.words
+                .sort_by(|a, b| a.bbox.top.partial_cmp(&b.bbox.top).unwrap());
+        }
+    }
+
+    // Sort columns: Ttb (90°) left-to-right, Btt (270°) right-to-left.
+    // For a single-column Btt page the column order doesn't matter, but
+    // multi-column 270° pages read from the right column to the left.
+
+    if is_btt {
+        lines.sort_by(|a, b| b.bbox.x0.partial_cmp(&a.bbox.x0).unwrap());
+    } else {
+        lines.sort_by(|a, b| a.bbox.x0.partial_cmp(&b.bbox.x0).unwrap());
+    }
 
     lines
 }

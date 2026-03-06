@@ -350,7 +350,20 @@ impl WordExtractor {
     }
 
     fn make_word(chars: &[Char], expand_ligatures: bool) -> Word {
-        let raw_text: String = chars.iter().map(|c| c.text.as_str()).collect();
+        // Btt and physical-Rtl chars are sorted in ascending spatial order during
+        // clustering, but their reading direction is opposite — reverse char order
+        // to restore reading order.
+        // Physical-Rtl detection: chars are at descending x positions (e.g. 180°
+        // rotation where TRM has negative x scaling).
+        let direction = chars[0].direction;
+        let is_physically_rtl = direction == TextDirection::Rtl
+            && chars.len() >= 2
+            && chars[0].bbox.x0 > chars[chars.len() - 1].bbox.x0;
+        let raw_text: String = if direction == TextDirection::Btt || is_physically_rtl {
+            chars.iter().rev().map(|c| c.text.as_str()).collect()
+        } else {
+            chars.iter().map(|c| c.text.as_str()).collect()
+        };
         let text = if expand_ligatures {
             expand_ligatures_in_text(&raw_text)
         } else {
@@ -362,7 +375,6 @@ impl WordExtractor {
             .reduce(|a, b| a.union(&b))
             .expect("make_word called with non-empty chars");
         let doctop = chars.iter().map(|c| c.doctop).fold(f64::INFINITY, f64::min);
-        let direction = chars[0].direction;
         Word {
             text,
             bbox,

@@ -24,16 +24,9 @@ use super::{app::GrepState, theme, widgets};
 
 pub fn render(state: &GrepState, area: Rect, buf: &mut Buffer) {
     let title = if state.query.is_empty() {
-        format!(
-            " grep: (type /) in {} ",
-            state.dir.display()
-        )
+        format!(" grep: (type /) in {} ", state.dir.display())
     } else {
-        format!(
-            " grep: \"{}\" in {} ",
-            state.query,
-            state.dir.display()
-        )
+        format!(" grep: \"{}\" in {} ", state.query, state.dir.display())
     };
 
     let block = widgets::bordered_box(Some(&title), true);
@@ -52,10 +45,7 @@ pub fn render(state: &GrepState, area: Rect, buf: &mut Buffer) {
 
     // Stats bar
     let stats = if state.searching {
-        format!(
-            "searching… {} files",
-            state.files_searched
-        )
+        format!("searching… {} files", state.files_searched)
     } else if state.results.is_empty() && !state.query.is_empty() {
         "no matches".to_string()
     } else {
@@ -88,28 +78,34 @@ pub fn render(state: &GrepState, area: Rect, buf: &mut Buffer) {
                 let abs_i = i + state.scroll;
                 let selected = abs_i == state.selected;
                 let prefix = if selected { "❯ " } else { "  " };
-                let name = m
-                    .file
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("?");
+                let name = m.file.file_name().and_then(|n| n.to_str()).unwrap_or("?");
                 let name_cell = widgets::pad_to_width(name, name_width);
                 let page_cell = widgets::pad_to_width(&format!("p.{}", m.page + 1), 6);
                 let snippet = widgets::truncate_to_width(
                     &m.snippet,
-                    (chunks[2].width as usize)
-                        .saturating_sub(name_width + 6 + prefix.len() + 4),
+                    (chunks[2].width as usize).saturating_sub(name_width + 6 + prefix.len() + 4),
                 );
 
                 let line = Line::from(vec![
                     Span::styled(prefix, theme::accent()),
-                    Span::styled(name_cell, if selected { theme::selected() } else { theme::text() }),
+                    Span::styled(
+                        name_cell,
+                        if selected {
+                            theme::selected()
+                        } else {
+                            theme::text()
+                        },
+                    ),
                     Span::styled("  ", theme::muted()),
                     Span::styled(page_cell, theme::muted()),
                     Span::styled("  ", theme::muted()),
                     Span::styled(
                         format!("\"{}\"", snippet),
-                        if selected { theme::accent() } else { theme::muted() },
+                        if selected {
+                            theme::accent()
+                        } else {
+                            theme::muted()
+                        },
                     ),
                 ]);
                 ListItem::new(line)

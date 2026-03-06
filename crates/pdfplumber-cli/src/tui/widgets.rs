@@ -57,7 +57,7 @@ pub fn bordered_box<'a>(title: Option<&'a str>, focused: bool) -> Block<'a> {
         .borders(Borders::ALL)
         .border_style(border_style);
     if let Some(t) = title {
-        block = block.title(Span::styled(format!(" {} ", t), theme::accent()));
+        block = block.title(Span::styled(t, theme::accent()));
     }
     block
 }

@@ -46,9 +46,7 @@ pub fn render(state: &ExtractState, area: Rect, buf: &mut Buffer) {
             .iter()
             .skip(state.scroll)
             .take(height)
-            .map(|l| {
-                ListItem::new(Line::from(Span::styled(l.as_str(), theme::text())))
-            })
+            .map(|l| ListItem::new(Line::from(Span::styled(l.as_str(), theme::text()))))
             .collect();
         List::new(visible).render(chunks[0], buf);
     }

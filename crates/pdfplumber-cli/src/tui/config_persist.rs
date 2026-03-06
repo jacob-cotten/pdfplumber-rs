@@ -26,9 +26,8 @@ pub fn config_path() -> PathBuf {
     // dirs::config_dir() returns the platform config root:
     //   Linux/macOS: $HOME/.config
     //   Windows:     %APPDATA%
-    let base = dirs::config_dir().unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    });
+    let base = dirs::config_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     base.join("pdfplumber").join("config.toml")
 }
 

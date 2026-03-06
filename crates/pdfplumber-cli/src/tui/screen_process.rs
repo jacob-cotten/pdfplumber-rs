@@ -67,35 +67,17 @@ fn render_preflight(state: &ProcessState, area: Rect, buf: &mut Buffer) {
         .height(1);
 
     let height = chunks[2].height as usize;
-    let rows: Vec<Row> = state
-        .files
-        .iter()
-        .skip(state.scroll)
-        .take(height.saturating_sub(2)) // account for header + border
-        .map(|f| {
-            let note = if f.needs_ollama {
-                Span::styled("⚠ image-only", theme::warn())
-            } else {
-                Span::styled("", theme::muted())
-            };
-            Row::new(vec![
-                widgets::truncate_to_width(&f.name, name_width as usize),
-                format!("{:>5}", f.pages),
-                "".to_string(), // note rendered separately via styled spans below
-            ])
-            .height(1)
-        })
-        .collect();
-
-    // Simple table — the `note` column with warn style would require Line cells.
-    // Use a simplified row rendering with note embedded in the file name column.
-    let rows_styled: Vec<Row> = state
+    let rows_with_note: Vec<Row> = state
         .files
         .iter()
         .skip(state.scroll)
         .take(height.saturating_sub(2))
         .map(|f| {
-            let note = if f.needs_ollama { " ⚠ image-only" } else { "" };
+            let note = if f.needs_ollama {
+                " ⚠ image-only"
+            } else {
+                ""
+            };
             Row::new(vec![
                 widgets::truncate_to_width(&f.name, name_width as usize),
                 format!("{:>5}", f.pages),
@@ -104,10 +86,8 @@ fn render_preflight(state: &ProcessState, area: Rect, buf: &mut Buffer) {
         })
         .collect();
 
-    let _ = rows; // suppress unused warning from the first vec
-
     Table::new(
-        rows_styled,
+        rows_with_note,
         [
             Constraint::Length(name_width),
             Constraint::Length(6),
@@ -163,11 +143,7 @@ fn render_progress(state: &ProcessState, area: Rect, buf: &mut Buffer) {
         .split(area);
 
     let (done, total) = state.progress;
-    let pct = if total > 0 {
-        (done * 100) / total
-    } else {
-        0
-    };
+    let pct = if total > 0 { (done * 100) / total } else { 0 };
     Paragraph::new(Line::from(vec![
         Span::styled(format!("{}/{} files  ", done, total), theme::text()),
         Span::styled(format!("({}%)", pct), theme::accent()),
@@ -175,11 +151,8 @@ fn render_progress(state: &ProcessState, area: Rect, buf: &mut Buffer) {
     .render(chunks[0], buf);
 
     if let Some(ref f) = state.current_file {
-        Paragraph::new(Span::styled(
-            format!("processing: {}", f),
-            theme::muted(),
-        ))
-        .render(chunks[1], buf);
+        Paragraph::new(Span::styled(format!("processing: {}", f), theme::muted()))
+            .render(chunks[1], buf);
     }
 
     widgets::render_footer(buf, chunks[3], &[("esc", "abort")]);

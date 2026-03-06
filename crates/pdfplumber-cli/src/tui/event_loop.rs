@@ -49,9 +49,7 @@ use super::theme;
 // ── render dispatch ───────────────────────────────────────────────────────────
 
 fn render(app: &App, frame: &mut ratatui::Frame) {
-    use super::{
-        screen_config, screen_extract, screen_grep, screen_menu, screen_process, widgets,
-    };
+    use super::{screen_config, screen_extract, screen_grep, screen_menu, screen_process, widgets};
     use ratatui::layout::Rect;
 
     let area = frame.area();
@@ -105,7 +103,11 @@ fn render(app: &App, frame: &mut ratatui::Frame) {
     }
 }
 
-fn render_confirm(st: &ConfirmState, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+fn render_confirm(
+    st: &ConfirmState,
+    area: ratatui::layout::Rect,
+    buf: &mut ratatui::buffer::Buffer,
+) {
     use ratatui::{
         layout::{Alignment, Constraint, Direction, Layout, Rect},
         text::{Line, Span},

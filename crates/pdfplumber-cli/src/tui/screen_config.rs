@@ -89,10 +89,7 @@ fn render_field(
     focused: bool,
     editing: bool,
 ) {
-    let label_area = Rect {
-        height: 1,
-        ..area
-    };
+    let label_area = Rect { height: 1, ..area };
     let value_area = Rect {
         y: area.y + 1,
         height: 1,

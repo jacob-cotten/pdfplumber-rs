@@ -99,11 +99,7 @@ fn collect_pdfs(dir: &Path, recursive: bool) -> std::io::Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-fn collect_inner(
-    dir: &Path,
-    recursive: bool,
-    out: &mut Vec<PathBuf>,
-) -> std::io::Result<()> {
+fn collect_inner(dir: &Path, recursive: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let rd = match fs::read_dir(dir) {
         Ok(r) => r,
         Err(_) => return Ok(()), // silently skip unreadable dirs
@@ -135,8 +131,7 @@ fn collect_inner(
 
 /// Open a single PDF and inspect it.
 fn scan_single(path: &Path) -> Result<FilePreview, String> {
-    let pdf = Pdf::open_file(path, None)
-        .map_err(|e| format!("{e}"))?;
+    let pdf = Pdf::open_file(path, None).map_err(|e| format!("{e}"))?;
 
     let total_pages = pdf.page_count();
     let mut image_only_pages = 0usize;

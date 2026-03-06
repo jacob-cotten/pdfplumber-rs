@@ -36,11 +36,7 @@ pub fn extract_word_lines(file: &Path, page_index: usize) -> Result<Vec<String>,
         .map(|w| {
             format!(
                 "{:<40} x0={:.1} y0={:.1} x1={:.1} y1={:.1}",
-                w.text,
-                w.bbox.x0,
-                w.bbox.y0,
-                w.bbox.x1,
-                w.bbox.y1,
+                w.text, w.bbox.x0, w.bbox.y0, w.bbox.x1, w.bbox.y1,
             )
         })
         .collect();

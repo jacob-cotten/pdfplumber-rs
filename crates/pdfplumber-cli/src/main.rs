@@ -28,7 +28,12 @@ fn main() {
     // When `--no-tui` is passed, or stdout is not a TTY, fall through to
     // the regular subcommand dispatch.
     #[cfg(feature = "tui")]
-    if let cli::Commands::Tui { ref file, ref dir, no_tui } = cli.command {
+    if let cli::Commands::Tui {
+        ref file,
+        ref dir,
+        no_tui,
+    } = cli.command
+    {
         if no_tui {
             eprintln!("pdfplumber: --no-tui flag set, falling back to headless mode");
             std::process::exit(0);

@@ -41,7 +41,7 @@ impl MenuState {
     pub fn new() -> Self {
         Self {
             selected: 0,
-            item_count: 5, // extract, tables, grep, process, config
+            item_count: 5, // extract, tables, grep, process, config — must match MENU_ITEMS in screen_menu
         }
     }
 
@@ -160,7 +160,7 @@ pub struct ProcessState {
     pub current_file: Option<String>,
     /// Whether Ollama is configured.
     pub ollama_configured: bool,
-    /// Number of scanned pages that need Ollama fallback.
+    /// Number of scanned PDFs that contain at least one image-only page (need Ollama fallback).
     pub ollama_needed: usize,
 }
 

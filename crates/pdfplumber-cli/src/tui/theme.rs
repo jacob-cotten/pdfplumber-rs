@@ -57,7 +57,10 @@ pub fn accent_bold() -> Style {
 
 /// Selected list item.
 pub fn selected() -> Style {
-    Style::default().bg(SELECTED_BG).fg(SELECTED_FG).add_modifier(Modifier::BOLD)
+    Style::default()
+        .bg(SELECTED_BG)
+        .fg(SELECTED_FG)
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Warning / error text.

@@ -49,7 +49,9 @@ pub fn next_event(timeout: Duration) -> std::io::Result<Option<AppAction>> {
         return Ok(Some(AppAction::Tick));
     }
     match event::read()? {
-        Event::Key(KeyEvent { code, modifiers, .. }) => Ok(Some(key_to_action(code, modifiers))),
+        Event::Key(KeyEvent {
+            code, modifiers, ..
+        }) => Ok(Some(key_to_action(code, modifiers))),
         Event::Resize(w, h) => Ok(Some(AppAction::Resize(w, h))),
         _ => Ok(Some(AppAction::Tick)),
     }

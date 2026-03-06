@@ -11,9 +11,9 @@
 
 use std::path::PathBuf;
 
-use super::app::{
-    App, ConfigState, ExtractMode, ExtractState, GrepState, ProcessState, Screen,
-};
+use arboard::Clipboard;
+
+use super::app::{App, ConfigState, ExtractMode, ExtractState, GrepState, ProcessState, Screen};
 use super::config_persist;
 use super::events::AppAction;
 use super::extraction;
@@ -37,15 +37,34 @@ pub fn dispatch(app: &mut App, action: AppAction) {
         _ => {}
     }
 
-    // Clone screen tag so we can match without borrowing app
-    match &app.screen {
-        Screen::Menu => handle_menu(app, action),
-        Screen::Extract(_) => handle_extract(app, action),
-        Screen::Grep(_) => handle_grep(app, action),
-        Screen::Process(_) => handle_process(app, action),
-        Screen::Config(_) => handle_config(app, action),
-        Screen::Confirm(_) => handle_confirm(app, action),
-        Screen::Quit => {}
+    // Determine the active screen variant without keeping a borrow,
+    // then call the appropriate handler (which takes &mut App).
+    enum ScreenKind {
+        Menu,
+        Extract,
+        Grep,
+        Process,
+        Config,
+        Confirm,
+        Quit,
+    }
+    let kind = match &app.screen {
+        Screen::Menu => ScreenKind::Menu,
+        Screen::Extract(_) => ScreenKind::Extract,
+        Screen::Grep(_) => ScreenKind::Grep,
+        Screen::Process(_) => ScreenKind::Process,
+        Screen::Config(_) => ScreenKind::Config,
+        Screen::Confirm(_) => ScreenKind::Confirm,
+        Screen::Quit => ScreenKind::Quit,
+    };
+    match kind {
+        ScreenKind::Menu => handle_menu(app, action),
+        ScreenKind::Extract => handle_extract(app, action),
+        ScreenKind::Grep => handle_grep(app, action),
+        ScreenKind::Process => handle_process(app, action),
+        ScreenKind::Config => handle_config(app, action),
+        ScreenKind::Confirm => handle_confirm(app, action),
+        ScreenKind::Quit => {}
     }
 }
 
@@ -74,15 +93,13 @@ fn activate_menu_item(app: &mut App) {
             // extract — needs a file argument; show a hint if none was given.
             // (When a file is provided on startup the event_loop skips the menu
             // entirely and opens Extract directly.)
-            app.status = Some(
-                "Pass a PDF file as argument: pdfplumber --tui <file.pdf>".to_string(),
-            );
+            app.status =
+                Some("Pass a PDF file as argument: pdfplumber --tui <file.pdf>".to_string());
         }
         1 => {
             // tables — same: needs a file
-            app.status = Some(
-                "Pass a PDF file as argument: pdfplumber --tui <file.pdf>".to_string(),
-            );
+            app.status =
+                Some("Pass a PDF file as argument: pdfplumber --tui <file.pdf>".to_string());
         }
         2 => {
             // grep — open grep view with resolved dir
@@ -132,7 +149,7 @@ fn activate_menu_item(app: &mut App) {
             // Update status with scan summary
             if ollama_count > 0 {
                 app.status = Some(format!(
-                    "Found {file_count} PDF(s) — {ollama_count} need Ollama (image-only pages)"
+                    "Found {file_count} PDF(s) — {ollama_count} have image-only pages (need Ollama)"
                 ));
             } else {
                 app.status = Some(format!("Found {file_count} PDF(s) — all text-extractable"));
@@ -149,14 +166,14 @@ fn activate_menu_item(app: &mut App) {
 // ── extract ──────────────────────────────────────────────────────────────────
 
 fn handle_extract(app: &mut App, action: AppAction) {
-    let Screen::Extract(ref mut st) = app.screen else {
+    // Guard: only handle this if we're on the Extract screen
+    if !matches!(app.screen, Screen::Extract(_)) {
         return;
-    };
+    }
 
     match action {
         AppAction::Escape => {
             app.screen = Screen::Menu;
-            return;
         }
         AppAction::Left => {
             let Screen::Extract(ref mut st) = app.screen else {
@@ -204,24 +221,22 @@ fn handle_extract(app: &mut App, action: AppAction) {
             }
         }
         AppAction::Yank => {
-            // Copy visible lines to clipboard via arboard
-            #[cfg(feature = "tui")]
-            {
+            // Build text in a scope that drops the borrow before we mutate app
+            let text = {
                 let Screen::Extract(ref st) = app.screen else {
                     return;
                 };
-                let text = st.lines.join("\n");
-                if let Ok(mut cb) = arboard::Clipboard::new() {
-                    if cb.set_text(&text).is_ok() {
-                        app.copied = true;
-                        app.status = Some("Copied to clipboard".to_string());
-                    }
+                st.lines.join("\n")
+            }; // borrow dropped here
+            if let Ok(mut cb) = Clipboard::new() {
+                if cb.set_text(&text).is_ok() {
+                    app.copied = true;
+                    app.status = Some("Copied to clipboard".to_string());
                 }
             }
         }
         _ => {}
     }
-    // Re-borrow for Escape which already returned above
 }
 
 /// Reload extraction lines for the current page+mode.
@@ -247,38 +262,49 @@ fn reload_extract(st: &mut ExtractState) {
 // ── grep ─────────────────────────────────────────────────────────────────────
 
 fn handle_grep(app: &mut App, action: AppAction) {
-    let Screen::Grep(ref mut st) = app.screen else {
-        return;
-    };
+    // Extract editing flag without long-lived borrow
+    let is_editing = matches!(&app.screen, Screen::Grep(st) if st.editing);
 
-    if st.editing {
+    if is_editing {
         match action {
             AppAction::Escape => {
+                let Screen::Grep(ref mut st) = app.screen else {
+                    return;
+                };
                 st.editing = false;
-                if st.query.is_empty() {
+                let query_empty = st.query.is_empty();
+                drop(st); // end borrow before mutating app.screen
+                if query_empty {
                     app.screen = Screen::Menu;
                 }
-                return;
             }
             AppAction::Enter => {
+                // End editing and run search (need owned state to call run_grep)
+                let Screen::Grep(ref mut st) = app.screen else {
+                    return;
+                };
                 st.editing = false;
                 run_grep(st);
-                return;
             }
             AppAction::Char(c) => {
+                let Screen::Grep(ref mut st) = app.screen else {
+                    return;
+                };
                 st.query.insert(st.cursor, c);
                 st.cursor += 1;
-                return;
             }
             AppAction::Backspace => {
+                let Screen::Grep(ref mut st) = app.screen else {
+                    return;
+                };
                 if st.cursor > 0 {
                     st.cursor -= 1;
                     st.query.remove(st.cursor);
                 }
-                return;
             }
-            _ => return,
+            _ => {}
         }
+        return;
     }
 
     // Results navigation mode
@@ -314,7 +340,6 @@ fn handle_grep(app: &mut App, action: AppAction) {
             }
         }
         AppAction::Enter => {
-            // Toggle context expansion for selected result
             let Screen::Grep(ref mut st) = app.screen else {
                 return;
             };
@@ -324,6 +349,28 @@ fn handle_grep(app: &mut App, action: AppAction) {
                 let page_idx = m.page.saturating_sub(1);
                 if let Ok(lines) = extraction::extract_text_lines(&m.file, page_idx) {
                     st.context = Some(lines.join("\n"));
+                }
+            }
+        }
+        AppAction::Yank => {
+            // Build text while borrowing state, then release borrow before
+            // mutating app fields (copied, status)
+            let text = {
+                let Screen::Grep(ref st) = app.screen else {
+                    return;
+                };
+                if let Some(ref ctx) = st.context {
+                    ctx.clone()
+                } else if let Some(m) = st.results.get(st.selected) {
+                    format!("{}  p.{}  {}", m.file.display(), m.page + 1, m.snippet)
+                } else {
+                    return;
+                }
+            }; // borrow dropped here
+            if let Ok(mut cb) = Clipboard::new() {
+                if cb.set_text(&text).is_ok() {
+                    app.copied = true;
+                    app.status = Some("Copied to clipboard".to_string());
                 }
             }
         }
@@ -356,13 +403,14 @@ fn run_grep(st: &mut GrepState) {
 // ── process ──────────────────────────────────────────────────────────────────
 
 fn handle_process(app: &mut App, action: AppAction) {
-    let Screen::Process(ref mut st) = app.screen else {
+    if !matches!(app.screen, Screen::Process(_)) {
         return;
-    };
+    }
 
-    if st.confirmed {
-        // Progress mode — nothing interactive, Escape cancels (noop here,
-        // batch would need threading; show status only)
+    // Extract confirmed flag without long-lived borrow
+    let confirmed = matches!(&app.screen, Screen::Process(st) if st.confirmed);
+
+    if confirmed {
         if matches!(action, AppAction::Escape) {
             app.screen = Screen::Menu;
         }
@@ -390,20 +438,29 @@ fn handle_process(app: &mut App, action: AppAction) {
                 st.scroll += 1;
             }
         }
-        AppAction::Char('y') | AppAction::Enter => {
-            let Screen::Process(ref mut st) = app.screen else {
-                return;
+        // 'y' is translated to AppAction::Yank globally; accept both here.
+        AppAction::Yank | AppAction::Char('y') | AppAction::Enter => {
+            // Check gate in a scope, then mutate
+            let (can_proceed, needs_ollama_msg) = {
+                let Screen::Process(ref st) = app.screen else {
+                    return;
+                };
+                let ok = st.ollama_needed == 0 || st.ollama_configured;
+                (ok, !ok)
             };
-            if st.ollama_needed == 0 || st.ollama_configured {
+            if needs_ollama_msg {
+                app.status = Some("Configure Ollama first (press 'c')".to_string());
+                return;
+            }
+            if can_proceed {
+                let Screen::Process(ref mut st) = app.screen else {
+                    return;
+                };
                 st.confirmed = true;
                 st.progress = (0, st.files.len());
-                // Actual processing would run in a background thread;
-                // here we mark the first file to show the UI works.
                 if let Some(f) = st.files.first() {
                     st.current_file = Some(f.name.clone());
                 }
-            } else {
-                app.status = Some("Configure Ollama first (press 'c')".to_string());
             }
         }
         AppAction::Char('n') => {
@@ -419,19 +476,30 @@ fn handle_process(app: &mut App, action: AppAction) {
 // ── config ───────────────────────────────────────────────────────────────────
 
 fn handle_config(app: &mut App, action: AppAction) {
-    let Screen::Config(ref mut st) = app.screen else {
+    if !matches!(app.screen, Screen::Config(_)) {
         return;
-    };
+    }
 
-    if st.editing {
+    let is_editing = matches!(&app.screen, Screen::Config(st) if st.editing);
+
+    if is_editing {
         match action {
             AppAction::Escape | AppAction::Enter => {
+                let Screen::Config(ref mut st) = app.screen else {
+                    return;
+                };
                 st.editing = false;
             }
             AppAction::Char(c) => {
+                let Screen::Config(ref mut st) = app.screen else {
+                    return;
+                };
                 field_insert(st, c);
             }
             AppAction::Backspace => {
+                let Screen::Config(ref mut st) = app.screen else {
+                    return;
+                };
                 field_backspace(st);
             }
             _ => {}
@@ -469,11 +537,13 @@ fn handle_config(app: &mut App, action: AppAction) {
             st.cursor = field_len(st);
         }
         AppAction::Save => {
-            // Persist to ~/.config/pdfplumber/config.toml
-            let Screen::Config(ref st) = app.screen else {
-                return;
-            };
-            let st_clone = st.clone();
+            // Clone config state in a scope, then persist + update app
+            let st_clone = {
+                let Screen::Config(ref st) = app.screen else {
+                    return;
+                };
+                st.clone()
+            }; // borrow dropped
             match config_persist::save_config(&st_clone) {
                 Ok(()) => {
                     app.saved_config = st_clone;
@@ -541,9 +611,9 @@ fn field_len(st: &ConfigState) -> usize {
 // ── confirm ───────────────────────────────────────────────────────────────────
 
 fn handle_confirm(app: &mut App, action: AppAction) {
-    let Screen::Confirm(ref st) = app.screen else {
+    if !matches!(app.screen, Screen::Confirm(_)) {
         return;
-    };
+    }
 
     match action {
         AppAction::Left | AppAction::Right | AppAction::Tab => {
@@ -553,28 +623,26 @@ fn handle_confirm(app: &mut App, action: AppAction) {
             st.yes_focused = !st.yes_focused;
         }
         AppAction::Enter => {
-            let next = if app.screen
-                .as_confirm()
-                .map(|s| s.yes_focused)
-                .unwrap_or(false)
-            {
-                app.screen
-                    .as_confirm()
-                    .map(|s| *s.confirm_screen.clone())
-                    .unwrap_or(Screen::Menu)
-            } else {
-                app.screen
-                    .as_confirm()
-                    .map(|s| *s.cancel_screen.clone())
-                    .unwrap_or(Screen::Menu)
-            };
+            // Extract next screen in a scope that drops the borrow
+            let next = {
+                let Screen::Confirm(ref st) = app.screen else {
+                    return;
+                };
+                if st.yes_focused {
+                    *st.confirm_screen.clone()
+                } else {
+                    *st.cancel_screen.clone()
+                }
+            }; // borrow dropped
             app.screen = next;
         }
         AppAction::Escape => {
-            let next = app.screen
-                .as_confirm()
-                .map(|s| *s.cancel_screen.clone())
-                .unwrap_or(Screen::Menu);
+            let next = {
+                let Screen::Confirm(ref st) = app.screen else {
+                    return;
+                };
+                *st.cancel_screen.clone()
+            }; // borrow dropped
             app.screen = next;
         }
         _ => {}
@@ -589,16 +657,5 @@ fn adjust_scroll(selected: usize, scroll: &mut usize, height: usize) {
         *scroll = selected;
     } else if selected >= *scroll + height {
         *scroll = selected.saturating_sub(height - 1);
-    }
-}
-
-// Extension helpers on Screen to avoid repeated destructuring
-impl Screen {
-    fn as_confirm(&self) -> Option<&crate::tui::app::ConfirmState> {
-        if let Screen::Confirm(s) = self {
-            Some(s)
-        } else {
-            None
-        }
     }
 }

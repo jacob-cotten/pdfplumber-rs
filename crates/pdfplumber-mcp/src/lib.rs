@@ -101,8 +101,6 @@ impl Server {
     }
 }
 
-// ── JSON-RPC helpers ──────────────────────────────────────────────────────────
-
 fn rpc_ok(id: Value, result: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": result })
 }
@@ -110,8 +108,6 @@ fn rpc_ok(id: Value, result: Value) -> Value {
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
-
-// ── tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -183,11 +179,10 @@ mod tests {
     }
 
     #[test]
-    fn handle_is_always_valid_json() {
-        // Even garbage input must return parseable JSON.
+    fn handle_always_returns_valid_json() {
         for input in &["", "   ", "{}", "null", "[]"] {
             let out = srv().handle(input);
-            assert!(serde_json::from_str::<Value>(&out).is_ok(), "not JSON for input {input:?}: {out}");
+            assert!(serde_json::from_str::<Value>(&out).is_ok(), "not JSON for {input:?}: {out}");
         }
     }
 }

@@ -1,294 +1,424 @@
-//! MCP tool dispatch — `pdf.*` tool implementations.
+//! Tool implementations for the pdfplumber MCP server.
 //!
-//! Agent C owns this file. This stub compiles cleanly so the workspace builds
-//! while C is in flight. Replace entirely with the real implementation.
-//!
-//! # Tool registry
-//!
-//! | Tool | Description |
-//! |------|-------------|
-//! | `pdf.extract_text` | Full text or single-page text extraction |
-//! | `pdf.extract_tables` | Table detection and cell content |
-//! | `pdf.extract_chars` | Character-level data with bbox + font metadata |
-//! | `pdf.metadata` | Title, author, page count, tagged status |
-//! | `pdf.layout` | Semantic layout inference (sections, headings, paragraphs) |
-//! | `pdf.to_markdown` | PDF → Markdown via layout inference |
-//! | `pdf.render_page` | Rasterize page to PNG (base64, requires `raster` feature) |
-//! | `pdf.accessibility` | PDF/UA audit with violation list |
-//! | `pdf.infer_tags` | Heuristic tag inference for untagged PDFs |
+//! Each function takes `serde_json::Value` arguments and returns
+//! `Ok(Vec<Value>)` (MCP content array) or `Err(String)` (`isError: true`).
 
-use serde_json::Value;
+use pdfplumber::{Pdf, TextOptions, TableSettings, WordOptions};
+use serde_json::{Value, json};
 
-/// Return the `tools/list` response body.
-pub fn list() -> Value {
-    serde_json::json!({
-        "tools": tool_definitions()
-    })
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+fn open(args: &Value) -> Result<Pdf, String> {
+    let path = args["path"]
+        .as_str()
+        .ok_or_else(|| "missing required argument 'path'".to_string())?;
+    Pdf::open_file(path, None).map_err(|e| format!("failed to open {path:?}: {e}"))
 }
 
-/// Dispatch a `tools/call` request to the appropriate handler.
-///
-/// Returns a `{ content: [{ type, text }], isError: bool }` response body.
-pub fn call(name: &str, args: &Value) -> Value {
-    let result = match name {
-        "pdf.extract_text" => extract_text(args),
+fn require_page_idx(args: &Value) -> Result<usize, String> {
+    args["page"]
+        .as_u64()
+        .map(|n| n as usize)
+        .ok_or_else(|| "missing required argument 'page' (0-based integer)".to_string())
+}
+
+fn text(s: impl Into<String>) -> Vec<Value> {
+    vec![json!({ "type": "text", "text": s.into() })]
+}
+
+fn json_pretty(v: &Value) -> Vec<Value> {
+    text(serde_json::to_string_pretty(v).unwrap_or_default())
+}
+
+// ── tool definitions ──────────────────────────────────────────────────────────
+
+/// MCP tool definitions for `tools/list`. Schema per MCP 2024-11-05 spec.
+pub fn definitions() -> Vec<Value> {
+    let out = vec![
+        json!({
+            "name": "pdf.metadata",
+            "description": "Document metadata: title, author, subject, keywords, creator, producer, creation date, modification date, and page count.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the PDF file." }
+                },
+                "required": ["path"]
+            }
+        }),
+        json!({
+            "name": "pdf.extract_text",
+            "description": "Extract plain text. Returns all pages (with page separators) or a single page when 'page' is set. Set layout=true to preserve whitespace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path":   { "type": "string",  "description": "Path to the PDF file." },
+                    "page":   { "type": "integer", "description": "0-based page index. Omit for all pages." },
+                    "layout": { "type": "boolean", "description": "Preserve spatial layout. Default false." }
+                },
+                "required": ["path"]
+            }
+        }),
+        json!({
+            "name": "pdf.extract_tables",
+            "description": "Detect tables and return cells as 2-D arrays. Returns all pages grouped by page index, or a single page when 'page' is set.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string",  "description": "Path to the PDF file." },
+                    "page": { "type": "integer", "description": "0-based page index. Omit for all pages." }
+                },
+                "required": ["path"]
+            }
+        }),
+        json!({
+            "name": "pdf.extract_chars",
+            "description": "Character-level extraction: text, bounding box (x0/top/x1/bottom), font name, and font size. Requires 'page'.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path":  { "type": "string",  "description": "Path to the PDF file." },
+                    "page":  { "type": "integer", "description": "0-based page index." },
+                    "limit": { "type": "integer", "description": "Max chars to return (default 500)." }
+                },
+                "required": ["path", "page"]
+            }
+        }),
+        json!({
+            "name": "pdf.extract_words",
+            "description": "Word-level extraction: text and bounding box. Words formed by clustering characters spatially. Requires 'page'.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string",  "description": "Path to the PDF file." },
+                    "page": { "type": "integer", "description": "0-based page index." }
+                },
+                "required": ["path", "page"]
+            }
+        }),
+        json!({
+            "name": "pdf.layout",
+            "description": "Semantic layout inference: headings, paragraphs, sections, lists, tables, and figures. Pure geometric analysis — no ML, no network.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the PDF file." }
+                },
+                "required": ["path"]
+            }
+        }),
+        json!({
+            "name": "pdf.to_markdown",
+            "description": "Convert a PDF to GitHub-Flavored Markdown via layout inference. Headings, paragraphs, tables, and lists are preserved. Ideal for LLM input.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Path to the PDF file." }
+                },
+                "required": ["path"]
+            }
+        }),
+    ];
+
+    #[cfg(feature = "raster")]
+    out.push(json!({
+        "name": "pdf.render_page",
+        "description": "Rasterize a page to PNG, returned as base64. Pure Rust — no system library dependencies. scale=2.0 (default) = 144 dpi.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path":  { "type": "string",  "description": "Path to the PDF file." },
+                "page":  { "type": "integer", "description": "0-based page index (default 0)." },
+                "scale": { "type": "number",  "description": "Scale factor (default 2.0)." }
+            },
+            "required": ["path"]
+        }
+    }));
+
+    out
+}
+
+// ── dispatch ──────────────────────────────────────────────────────────────────
+
+/// Route a tool call by name.
+pub fn call(name: &str, args: Value) -> Result<Vec<Value>, String> {
+    match name {
+        "pdf.metadata"       => metadata(args),
+        "pdf.extract_text"   => extract_text(args),
         "pdf.extract_tables" => extract_tables(args),
-        "pdf.extract_chars" => extract_chars(args),
-        "pdf.metadata" => metadata(args),
-        "pdf.layout" => layout(args),
-        "pdf.to_markdown" => to_markdown(args),
-        "pdf.render_page" => render_page(args),
-        "pdf.accessibility" => accessibility(args),
-        "pdf.infer_tags" => infer_tags(args),
-        _ => Err(format!("unknown tool: {name}")),
-    };
-    match result {
-        Ok(text) => serde_json::json!({
-            "content": [{ "type": "text", "text": text }],
-            "isError": false
-        }),
-        Err(e) => serde_json::json!({
-            "content": [{ "type": "text", "text": e }],
-            "isError": true
-        }),
+        "pdf.extract_chars"  => extract_chars(args),
+        "pdf.extract_words"  => extract_words(args),
+        "pdf.layout"         => layout(args),
+        "pdf.to_markdown"    => to_markdown(args),
+        #[cfg(feature = "raster")]
+        "pdf.render_page"    => render_page(args),
+        _                    => Err(format!("unknown tool '{name}'")),
     }
 }
 
-// ── tool stubs (Agent C replaces these) ──────────────────────────────────────
+// ── implementations ───────────────────────────────────────────────────────────
 
-fn open(args: &Value) -> Result<pdfplumber::Pdf, String> {
-    let path = args.get("path").and_then(Value::as_str)
-        .ok_or_else(|| "missing required argument: path".to_string())?;
-    pdfplumber::Pdf::open_file(path, None).map_err(|e| e.to_string())
-}
-
-fn extract_text(args: &Value) -> Result<String, String> {
-    let pdf = open(args)?;
-    let opts = pdfplumber::TextOptions::default();
-    if let Some(n) = args.get("page").and_then(Value::as_u64) {
-        return Ok(pdf.page(n as usize).map_err(|e| e.to_string())?
-            .extract_text(&opts));
-    }
-    let mut out = String::new();
-    for result in pdf.pages_iter() {
-        let page = result.map_err(|e| e.to_string())?;
-        out.push_str(&page.extract_text(&opts));
-        out.push('\n');
-    }
-    Ok(out)
-}
-
-fn extract_tables(args: &Value) -> Result<String, String> {
-    let pdf = open(args)?;
-    let settings = pdfplumber::TableSettings::default();
-    let page_idx = args.get("page").and_then(Value::as_u64).unwrap_or(0) as usize;
-    let page = pdf.page(page_idx).map_err(|e| e.to_string())?;
-    let tables = page.find_tables(&settings);
-    Ok(serde_json::to_string_pretty(&tables.iter().map(|t| {
-        serde_json::json!({
-            "rows": t.rows.len(),
-            "cols": t.rows.first().map_or(0, |r| r.len()),
-        })
-    }).collect::<Vec<_>>()).unwrap_or_default())
-}
-
-fn extract_chars(args: &Value) -> Result<String, String> {
-    let pdf = open(args)?;
-    let page_idx = args.get("page").and_then(Value::as_u64).unwrap_or(0) as usize;
-    let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(500) as usize;
-    let page = pdf.page(page_idx).map_err(|e| e.to_string())?;
-    let chars: Vec<_> = page.chars().iter().take(limit).map(|c| serde_json::json!({
-        "text": c.text,
-        "x0": c.bbox.x0, "top": c.bbox.top, "x1": c.bbox.x1, "bottom": c.bbox.bottom,
-        "size": c.size,
-        "fontname": c.fontname,
-    })).collect();
-    Ok(serde_json::to_string_pretty(&chars).unwrap_or_default())
-}
-
-fn metadata(args: &Value) -> Result<String, String> {
-    let pdf = open(args)?;
-    let m = pdf.metadata();
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "title":         m.title,
-        "author":        m.author,
-        "subject":       m.subject,
-        "keywords":      m.keywords,
-        "creator":       m.creator,
-        "producer":      m.producer,
-        "creation_date": m.creation_date,
-        "mod_date":      m.mod_date,
+fn metadata(args: Value) -> Result<Vec<Value>, String> {
+    let pdf  = open(&args)?;
+    let meta = pdf.metadata();
+    Ok(json_pretty(&json!({
         "page_count":    pdf.page_count(),
-    })).unwrap_or_default())
+        "title":         meta.title,
+        "author":        meta.author,
+        "subject":       meta.subject,
+        "keywords":      meta.keywords,
+        "creator":       meta.creator,
+        "producer":      meta.producer,
+        "creation_date": meta.creation_date,
+        "mod_date":      meta.mod_date,
+    })))
+}
+
+fn extract_text(args: Value) -> Result<Vec<Value>, String> {
+    let pdf    = open(&args)?;
+    let layout = args["layout"].as_bool().unwrap_or(false);
+    let opts   = TextOptions { layout, ..Default::default() };
+
+    if let Some(idx) = args["page"].as_u64().map(|n| n as usize) {
+        let page = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
+        return Ok(text(page.extract_text(&opts)));
+    }
+
+    let mut buf = String::new();
+    for (i, result) in pdf.pages_iter().enumerate() {
+        match result {
+            Ok(page) => {
+                let t = page.extract_text(&opts);
+                if !t.is_empty() {
+                    if !buf.is_empty() { buf.push_str("\n\n"); }
+                    buf.push_str(&format!("--- Page {i} ---\n{t}"));
+                }
+            }
+            Err(e) => buf.push_str(&format!("\n--- Page {i} (error) ---\n{e}")),
+        }
+    }
+    Ok(text(buf))
+}
+
+fn extract_tables(args: Value) -> Result<Vec<Value>, String> {
+    let pdf      = open(&args)?;
+    let settings = TableSettings::default();
+
+    let page_tables = |page: &pdfplumber::Page| -> Value {
+        let rows_2d: Vec<Vec<Vec<Option<String>>>> = page
+            .find_tables(&settings)
+            .iter()
+            .map(|t| {
+                t.rows.iter().map(|row| {
+                    row.iter().map(|cell| cell.text.clone()).collect()
+                }).collect()
+            })
+            .collect();
+        json!(rows_2d)
+    };
+
+    if let Some(idx) = args["page"].as_u64().map(|n| n as usize) {
+        let page = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
+        return Ok(json_pretty(&page_tables(&page)));
+    }
+
+    let all: Vec<Value> = pdf
+        .pages_iter()
+        .enumerate()
+        .filter_map(|(i, result)| {
+            let page   = result.ok()?;
+            let tables = page_tables(&page);
+            if tables.as_array()?.is_empty() { return None; }
+            Some(json!({ "page": i, "tables": tables }))
+        })
+        .collect();
+
+    Ok(json_pretty(&json!(all)))
+}
+
+fn extract_chars(args: Value) -> Result<Vec<Value>, String> {
+    let pdf   = open(&args)?;
+    let idx   = require_page_idx(&args)?;
+    let limit = args["limit"].as_u64().unwrap_or(500) as usize;
+    let page  = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
+
+    let chars: Vec<Value> = page.chars().iter().take(limit).map(|c| json!({
+        "text":     c.text,
+        "x0":       c.bbox.x0,
+        "top":      c.bbox.top,
+        "x1":       c.bbox.x1,
+        "bottom":   c.bbox.bottom,
+        "fontname": c.fontname,
+        "size":     c.size,
+    })).collect();
+
+    Ok(json_pretty(&json!({
+        "page":     idx,
+        "total":    page.chars().len(),
+        "returned": chars.len(),
+        "chars":    chars,
+    })))
+}
+
+fn extract_words(args: Value) -> Result<Vec<Value>, String> {
+    let pdf  = open(&args)?;
+    let idx  = require_page_idx(&args)?;
+    let page = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
+
+    let words: Vec<Value> = page
+        .extract_words(&WordOptions::default())
+        .iter()
+        .map(|w| json!({
+            "text":   w.text,
+            "x0":     w.bbox.x0,
+            "top":    w.bbox.top,
+            "x1":     w.bbox.x1,
+            "bottom": w.bbox.bottom,
+        }))
+        .collect();
+
+    Ok(json_pretty(&json!({ "page": idx, "word_count": words.len(), "words": words })))
 }
 
 #[cfg(feature = "layout")]
-fn layout(args: &Value) -> Result<String, String> {
+fn layout(args: Value) -> Result<Vec<Value>, String> {
     use pdfplumber_layout::Document;
-    let pdf = open(args)?;
+
+    let pdf = open(&args)?;
     let doc = Document::from_pdf(&pdf);
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "sections": doc.sections().len(),
-        "word_count": doc.word_count(),
-    })).unwrap_or_default())
+    let st  = doc.stats();
+
+    let sections: Vec<Value> = doc.sections().iter().map(|s| {
+        let heading   = s.heading().map(|h| json!({ "level": h.level().as_int(), "text": h.text() }));
+        let paras: Vec<&str> = s.paragraphs().map(|p| p.text()).collect();
+        json!({ "heading": heading, "paragraph_count": paras.len(), "paragraphs": paras })
+    }).collect();
+
+    Ok(json_pretty(&json!({
+        "page_count":    st.page_count,
+        "section_count": sections.len(),
+        "heading_count": st.heading_count,
+        "word_count":    doc.word_count(),
+        "body_font_pt":  st.body_font_size,
+        "sections":      sections,
+    })))
 }
 
 #[cfg(not(feature = "layout"))]
-fn layout(_args: &Value) -> Result<String, String> {
-    Err("layout feature not enabled — rebuild with --features layout".into())
+fn layout(_: Value) -> Result<Vec<Value>, String> {
+    Err("layout feature not compiled in — rebuild with --features layout".into())
 }
 
 #[cfg(feature = "layout")]
-fn to_markdown(args: &Value) -> Result<String, String> {
+fn to_markdown(args: Value) -> Result<Vec<Value>, String> {
     use pdfplumber_layout::Document;
-    let pdf = open(args)?;
-    Ok(Document::from_pdf(&pdf).to_markdown())
+    let pdf = open(&args)?;
+    Ok(text(Document::from_pdf(&pdf).to_markdown()))
 }
 
 #[cfg(not(feature = "layout"))]
-fn to_markdown(_args: &Value) -> Result<String, String> {
-    Err("layout feature not enabled — rebuild with --features layout".into())
+fn to_markdown(_: Value) -> Result<Vec<Value>, String> {
+    Err("layout feature not compiled in — rebuild with --features layout".into())
 }
 
 #[cfg(feature = "raster")]
-fn render_page(args: &Value) -> Result<String, String> {
-    use pdfplumber_raster::{RasterOptions, Rasterizer};
-    let pdf = open(args)?;
-    let page_idx = args.get("page").and_then(Value::as_u64).unwrap_or(0) as usize;
-    let scale = args.get("scale").and_then(Value::as_f64).unwrap_or(2.0) as f32;
-    let opts = RasterOptions { scale, ..Default::default() };
-    let rasterizer = Rasterizer::new(opts);
-    let result = rasterizer.render_page_index(&pdf, page_idx)
-        .ok_or_else(|| "page index out of range".to_string())?
-        .map_err(|e| e.to_string())?;
-    Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &result.png))
+fn render_page(args: Value) -> Result<Vec<Value>, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use pdfplumber_raster::{Rasterizer, RasterOptions};
+
+    let pdf   = open(&args)?;
+    let idx   = args["page"].as_u64().unwrap_or(0) as usize;
+    let scale = args["scale"].as_f64().unwrap_or(2.0) as f32;
+    let page  = pdf.page(idx).map_err(|e| format!("page {idx}: {e}"))?;
+
+    let result = Rasterizer::new(RasterOptions { scale, ..Default::default() })
+        .render_page(&page)
+        .map_err(|e| format!("render: {e}"))?;
+
+    Ok(vec![
+        json!({ "type": "text", "text": format!("Page {idx}: {}×{} px @ {:.1}×", result.width_px, result.height_px, result.scale) }),
+        json!({ "type": "image", "data": STANDARD.encode(&result.png), "mimeType": "image/png" }),
+    ])
 }
 
-#[cfg(not(feature = "raster"))]
-fn render_page(_args: &Value) -> Result<String, String> {
-    Err("raster feature not enabled — rebuild with --features raster".into())
-}
+// ── tests ─────────────────────────────────────────────────────────────────────
 
-fn accessibility(_args: &Value) -> Result<String, String> {
-    Err("pdfplumber-a11y not yet wired into this binary — coming soon".into())
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn infer_tags(_args: &Value) -> Result<String, String> {
-    Err("pdfplumber-a11y not yet wired into this binary — coming soon".into())
-}
+    #[test]
+    fn definitions_satisfy_mcp_schema() {
+        for tool in definitions() {
+            let name = tool["name"].as_str().unwrap_or("?");
+            assert!(tool.get("name").is_some(),         "{name}: missing name");
+            assert!(tool.get("description").is_some(),  "{name}: missing description");
+            let schema = tool.get("inputSchema").expect(&format!("{name}: missing inputSchema"));
+            assert_eq!(schema["type"], "object",        "{name}: schema type must be object");
+            assert!(schema.get("properties").is_some(), "{name}: schema missing properties");
+        }
+    }
 
-// ── tool schema definitions ───────────────────────────────────────────────────
+    #[test]
+    fn definitions_cover_all_core_tools() {
+        let defs = definitions();
+        let names: Vec<&str> = defs.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        for t in &["pdf.metadata", "pdf.extract_text", "pdf.extract_tables",
+                   "pdf.extract_chars", "pdf.extract_words", "pdf.layout", "pdf.to_markdown"] {
+            assert!(names.contains(t), "missing tool {t}");
+        }
+    }
 
-/// Build the tool list with full JSON Schema definitions.
-///
-/// Separate from the const because `serde_json::json!` isn't const-compatible.
-/// Called once by `list()`.
-pub fn tool_definitions() -> Vec<Value> {
-    vec![
-        serde_json::json!({
-            "name": "pdf.extract_text",
-            "description": "Extract all text from a PDF, or a single page if `page` is given.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "description": "Absolute path to the PDF file" },
-                    "page": { "type": "integer", "description": "0-based page index (omit for all pages)" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.extract_tables",
-            "description": "Detect and extract tables from a PDF page.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" },
-                    "page": { "type": "integer", "description": "0-based page index (default: 0)" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.extract_chars",
-            "description": "Extract character-level data: bbox, font name, size.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" },
-                    "page": { "type": "integer", "description": "0-based page index (default: 0)" },
-                    "limit": { "type": "integer", "description": "Max chars to return (default: 500)" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.metadata",
-            "description": "Return document metadata: title, author, page count, tagged status, PDF version.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.layout",
-            "description": "Run semantic layout inference: sections, headings, paragraphs, lists, figures. Requires `layout` feature.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.to_markdown",
-            "description": "Convert PDF to structured Markdown via layout inference. Requires `layout` feature.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.render_page",
-            "description": "Rasterize a PDF page to PNG, returned as base64. Requires `raster` feature.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" },
-                    "page": { "type": "integer", "description": "0-based page index (default: 0)" },
-                    "scale": { "type": "number", "description": "Render scale factor (default: 2.0)" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.accessibility",
-            "description": "Run a PDF/UA accessibility audit. Returns violations with severity and remediation hints.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" }
-                },
-                "required": ["path"]
-            }
-        }),
-        serde_json::json!({
-            "name": "pdf.infer_tags",
-            "description": "Heuristic tag inference for untagged PDFs — approximates heading/paragraph/figure structure.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" }
-                },
-                "required": ["path"]
-            }
-        }),
-    ]
+    #[test]
+    fn unknown_tool_is_err() {
+        assert!(call("pdf.nope", json!({})).is_err());
+        assert!(call("", json!({})).is_err());
+    }
+
+    #[test]
+    fn missing_path_is_err() {
+        for tool in &["pdf.metadata", "pdf.extract_text", "pdf.extract_tables",
+                      "pdf.layout", "pdf.to_markdown"] {
+            let r = call(tool, json!({}));
+            assert!(r.is_err(), "{tool}: should error on missing path");
+            assert!(r.unwrap_err().contains("path"), "{tool}: error must mention 'path'");
+        }
+    }
+
+    #[test]
+    fn nonexistent_file_is_err() {
+        let r = call("pdf.metadata", json!({ "path": "/tmp/__pdfplumber_mcp_absent__.pdf" }));
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("failed to open"));
+    }
+
+    #[test]
+    fn extract_chars_requires_page() {
+        let r = call("pdf.extract_chars", json!({ "path": "/tmp/x.pdf" }));
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("page"));
+    }
+
+    #[test]
+    fn extract_words_requires_page() {
+        let r = call("pdf.extract_words", json!({ "path": "/tmp/x.pdf" }));
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("page"));
+    }
+
+    #[test]
+    fn text_helper_shape() {
+        let c = text("hello");
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0]["type"], "text");
+        assert_eq!(c[0]["text"], "hello");
+    }
+
+    #[test]
+    fn json_pretty_round_trips() {
+        let v = json!({ "x": 99 });
+        let c = json_pretty(&v);
+        let back: Value = serde_json::from_str(c[0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(back["x"], 99);
+    }
 }

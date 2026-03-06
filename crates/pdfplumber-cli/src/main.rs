@@ -6,11 +6,11 @@ mod debug_cmd;
 mod forms_cmd;
 mod images_cmd;
 mod info_cmd;
-mod inspect_cmd;
 mod links_cmd;
 mod page_range;
 mod search_cmd;
 mod shared;
+mod signatures_cmd;
 mod tables_cmd;
 mod text_cmd;
 mod validate_cmd;
@@ -185,11 +185,12 @@ fn main() {
             ref format,
             ref password,
         } => validate_cmd::run(file, format, password.as_deref()),
-        cli::Commands::Inspect {
+        cli::Commands::Signatures {
             ref file,
+            verify,
             ref format,
             ref password,
-        } => inspect_cmd::run(file, format, password.as_deref()),
+        } => signatures_cmd::run(file, verify, format, password.as_deref()),
     };
 
     if let Err(code) = result {

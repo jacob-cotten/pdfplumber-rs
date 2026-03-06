@@ -364,15 +364,20 @@ pub enum Commands {
         password: Option<String>,
     },
 
-    /// Forensic inspection: producer fingerprinting, modification detection, risk scoring
-    Inspect {
+    /// List digital signatures and optionally verify them cryptographically
+    Signatures {
         /// Path to the PDF file
         #[arg(value_name = "FILE")]
         file: PathBuf,
 
+        /// Perform cryptographic verification of each signature.
+        /// Requires the `signatures` feature to be enabled at compile time.
+        #[arg(long)]
+        verify: bool,
+
         /// Output format
-        #[arg(long, value_enum, default_value_t = InspectFormat::Text)]
-        format: InspectFormat,
+        #[arg(long, value_enum, default_value_t = SignaturesFormat::Text)]
+        format: SignaturesFormat,
 
         /// Password for encrypted PDFs
         #[arg(long)]
@@ -380,12 +385,12 @@ pub enum Commands {
     },
 }
 
-/// Output format for the inspect subcommand.
+/// Output format for the signatures subcommand.
 #[derive(Debug, Clone, ValueEnum)]
-pub enum InspectFormat {
-    /// Human-readable text report
+pub enum SignaturesFormat {
+    /// Human-readable text output
     Text,
-    /// JSON output (requires --features serde)
+    /// JSON output (includes all fields)
     Json,
 }
 

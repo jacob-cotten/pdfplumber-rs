@@ -62,6 +62,11 @@ pub fn compute_body_baseline(chars: &[Char]) -> f64 {
     }
     let mut buckets: HashMap<u32, usize> = HashMap::new();
     for c in chars {
+        // Skip artifact characters with unreasonably small or zero font size —
+        // these are invisible chars, column rules, or watermarks, not body text.
+        if c.size < 3.5 {
+            continue;
+        }
         // Round to nearest 0.5 pt bucket, stored as integer (size * 2)
         let key = (c.size * 2.0).round() as u32;
         *buckets.entry(key).or_insert(0) += 1;

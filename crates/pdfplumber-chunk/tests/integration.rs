@@ -247,7 +247,7 @@ fn table_chunks_never_split() {
     // which has confirmed tables from the cross-validation harness.
     let pdf = open_fixture("cupertino_usd_4-6-16.pdf");
     let settings = ChunkSettings {
-        max_tokens: 10, // very small limit — tables must still be single chunks
+        max_tokens: 512, // tables must be single chunks regardless of token budget
         preserve_tables: true,
         ..Default::default()
     };

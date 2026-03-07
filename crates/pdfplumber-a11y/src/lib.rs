@@ -47,6 +47,7 @@
 
 #![deny(missing_docs)]
 
+pub(crate) mod checkers;
 mod rules;
 mod tag_infer;
 

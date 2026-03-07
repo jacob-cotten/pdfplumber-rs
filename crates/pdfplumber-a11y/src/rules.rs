@@ -1,7 +1,8 @@
-//! PDF/UA-1 rule checkers.
+//! PDF/UA-1 public types and analyzer.
 
 use pdfplumber::Pdf;
-use pdfplumber_core::StructElement;
+
+use crate::checkers::{check_page_structure, check_structure_tree};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public types
@@ -29,6 +30,18 @@ impl std::fmt::Display for Severity {
     }
 }
 
+/// A single PDF/UA rule violation found in the document.
+#[derive(Debug, Clone)]
+pub struct Violation {
+    rule_id: &'static str,
+    severity: Severity,
+    message: String,
+    /// Page number (0-based) where the violation was found. `None` = document-level.
+    page: Option<usize>,
+    /// Optional suggestion for fixing the violation.
+    suggestion: Option<String>,
+}
+
 impl std::fmt::Display for Violation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let page = self
@@ -47,20 +60,12 @@ impl std::fmt::Display for Violation {
     }
 }
 
-/// A single PDF/UA rule violation found in the document.
-#[derive(Debug, Clone)]
-pub struct Violation {
-    rule_id: &'static str,
-    severity: Severity,
-    message: String,
-    /// Page number (0-based) where the violation was found. `None` = document-level.
-    page: Option<usize>,
-    /// Optional suggestion for fixing the violation.
-    suggestion: Option<String>,
-}
-
 impl Violation {
-    fn new(rule_id: &'static str, severity: Severity, message: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        rule_id: &'static str,
+        severity: Severity,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             rule_id,
             severity,
@@ -70,12 +75,12 @@ impl Violation {
         }
     }
 
-    fn on_page(mut self, page: usize) -> Self {
+    pub(crate) fn on_page(mut self, page: usize) -> Self {
         self.page = Some(page);
         self
     }
 
-    fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
+    pub(crate) fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
         self.suggestion = Some(suggestion.into());
         self
     }
@@ -109,15 +114,15 @@ impl Violation {
 /// PDF/UA analysis result for a complete document.
 #[derive(Debug)]
 pub struct A11yReport {
-    violations: Vec<Violation>,
-    page_count: usize,
-    is_tagged: bool,
-    has_lang: bool,
-    has_title: bool,
-    /// Inferred structure tags produced by [`TagInferrer`] when the document
+    pub(crate) violations: Vec<Violation>,
+    pub(crate) page_count: usize,
+    pub(crate) is_tagged: bool,
+    pub(crate) has_lang: bool,
+    pub(crate) has_title: bool,
+    /// Inferred structure tags produced by [`crate::TagInferrer`] when the document
     /// is untagged. `None` if the document is already tagged or if inference
     /// was not requested.
-    inferred_tags: Option<Vec<crate::tag_infer::InferredTag>>,
+    pub(crate) inferred_tags: Option<Vec<crate::tag_infer::InferredTag>>,
 }
 
 impl A11yReport {
@@ -163,9 +168,9 @@ impl A11yReport {
 
     /// Inferred structure tags for untagged documents.
     ///
-    /// Returns `Some(&[InferredTag])` when the analyzer ran with
-    /// `run_inference = true` AND the document is untagged.
-    /// Returns `None` for tagged documents or when inference was not requested.
+    /// Returns `Some(&[InferredTag])` when the analyzer ran with inference AND
+    /// the document is untagged. Returns `None` for tagged documents or when
+    /// inference was not requested.
     pub fn inferred_tags(&self) -> Option<&[crate::tag_infer::InferredTag]> {
         self.inferred_tags.as_deref()
     }
@@ -241,11 +246,7 @@ impl A11yAnalyzer {
         let mut violations = Vec::new();
         let page_count = pdf.page_count();
 
-        // Collect all pages once — we iterate multiple times below.
-        // We use `page_count` to drive indexing; `pdf.pages()` is cheap (lazy).
-
         // UA-001: Document must be tagged.
-        // Detect via structure elements — a tagged PDF will have StructElements.
         let is_tagged = (0..page_count).any(|i| {
             pdf.page(i)
                 .ok()
@@ -267,9 +268,6 @@ impl A11yAnalyzer {
         }
 
         // UA-005: Document language.
-        // /Lang lives in the catalog dict; we detect its presence via any
-        // StructElement that carries a lang attribute (common in well-tagged PDFs).
-        // When none are found, emit a Warning so authors know to check.
         let has_lang = (0..page_count).any(|i| {
             pdf.page(i)
                 .ok()
@@ -318,12 +316,9 @@ impl A11yAnalyzer {
             let elems = page.structure_elements();
 
             if is_tagged {
-                // UA-002 / UA-003 / UA-006: check element tree for this page
                 check_structure_tree(&elems, &mut violations, self.emit_info);
-                // UA-007 / UA-010: per-page coverage and link checks
                 check_page_structure(&page, page_idx, &elems, &mut violations);
             } else {
-                // UA-003: untagged images have no alt text by definition
                 if !page.images().is_empty() {
                     violations.push(
                         Violation::new(
@@ -360,11 +355,6 @@ impl A11yAnalyzer {
     /// For untagged documents the returned [`A11yReport`] additionally contains
     /// `inferred_tags()` — a per-page list of structure elements that WOULD be
     /// needed to make the document accessible.
-    ///
-    /// The inferred tags are useful for:
-    /// - Showing authors what remediation would look like
-    /// - Feeding into a downstream PDF writer (Lane 10) to auto-tag documents
-    /// - Estimating remediation effort (`report.inference_review_count()`)
     pub fn analyze_with_inference(&self, pdf: &Pdf) -> A11yReport {
         let mut report = self.analyze(pdf);
         if !report.is_tagged {
@@ -376,230 +366,15 @@ impl A11yAnalyzer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Rule checkers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Standard PDF/UA structure element role names.
-const STANDARD_ROLES: &[&str] = &[
-    "Document",
-    "Art",
-    "Sect",
-    "Div",
-    "BlockQuote",
-    "Caption",
-    "TOC",
-    "TOCI",
-    "Index",
-    "NonStruct",
-    "Private",
-    "H",
-    "H1",
-    "H2",
-    "H3",
-    "H4",
-    "H5",
-    "H6",
-    "P",
-    "L",
-    "LI",
-    "Lbl",
-    "LBody",
-    "Table",
-    "TR",
-    "TH",
-    "TD",
-    "THead",
-    "TBody",
-    "TFoot",
-    "Span",
-    "Quote",
-    "Note",
-    "Reference",
-    "BibEntry",
-    "Code",
-    "Link",
-    "Annot",
-    "Ruby",
-    "RB",
-    "RT",
-    "RP",
-    "Warichu",
-    "WT",
-    "WP",
-    "Figure",
-    "Formula",
-    "Form",
-];
-
-fn is_standard_role(role: &str) -> bool {
-    STANDARD_ROLES.contains(&role)
-}
-
-fn check_structure_tree(
-    elements: &[&StructElement],
-    violations: &mut Vec<Violation>,
-    emit_info: bool,
-) {
-    let mut heading_stack: Vec<u8> = Vec::new(); // UA-006: heading nesting
-
-    for elem in elements {
-        check_element(elem, violations, &mut heading_stack, emit_info);
-    }
-}
-
-fn check_element(
-    elem: &StructElement,
-    violations: &mut Vec<Violation>,
-    heading_stack: &mut Vec<u8>,
-    emit_info: bool,
-) {
-    let role = &elem.element_type;
-
-    // UA-002: Standard role names
-    // Non-standard roles are allowed if they appear in a RoleMap, but we can only
-    // check the surface here. Always flag as Warning; Info-level details only when
-    // emit_info is set.
-    if !is_standard_role(role) && !role.starts_with('/') {
-        violations.push(Violation::new(
-            "UA-002",
-            Severity::Warning,
-            format!("Non-standard structure type '{role}' — ensure it has a RoleMap entry"),
-        ));
-    } else if emit_info && !role.starts_with('/') {
-        // Info: confirm recognized role (useful for verbose audits).
-        violations.push(Violation::new(
-            "UA-002",
-            Severity::Info,
-            format!("Standard role '{role}' recognized"),
-        ));
-    }
-
-    // UA-003: Figures need alt text
-    if role == "Figure" && elem.alt_text.is_none() {
-        violations.push(
-            Violation::new("UA-003", Severity::Error, "Figure element has no /Alt text")
-                .with_suggestion("Add /Alt entry to the Figure's attribute dictionary"),
-        );
-    }
-
-    // UA-004: Table header cells must have scope attributes.
-    // A TH element without a /Scope attribute is technically non-conforming.
-    // We flag it as a Warning since we cannot read /Scope from StructElement here
-    // (it lives in the attribute objects, not the element type). The heuristic:
-    // if a TH element has no children and no alt_text, it likely needs review.
-    if role == "TH" {
-        violations.push(
-            Violation::new(
-                "UA-004",
-                Severity::Warning,
-                "TH (table header cell) found — verify /Scope attribute (Column/Row/Both) is set",
-            )
-            .with_suggestion(
-                "Add /Scope /Column (or /Row or /Both) to each TH element's attribute dictionary",
-            ),
-        );
-    }
-
-    // UA-006: Heading nesting order
-    let heading_level: Option<u8> = match role.as_str() {
-        "H" => Some(1),
-        "H1" => Some(1),
-        "H2" => Some(2),
-        "H3" => Some(3),
-        "H4" => Some(4),
-        "H5" => Some(5),
-        "H6" => Some(6),
-        _ => None,
-    };
-    if let Some(level) = heading_level {
-        if let Some(&prev) = heading_stack.last() {
-            if level > prev + 1 {
-                violations.push(
-                    Violation::new(
-                        "UA-006",
-                        Severity::Error,
-                        format!(
-                            "Heading H{level} appears after H{prev} — headings must not skip levels"
-                        ),
-                    )
-                    .with_suggestion(format!("Add an H{} between H{prev} and H{level}", prev + 1)),
-                );
-            }
-        }
-        heading_stack.push(level);
-    }
-
-    // Recurse
-    for child in &elem.children {
-        check_element(child, violations, heading_stack, emit_info);
-    }
-}
-
-fn check_page_structure(
-    page: &pdfplumber::Page,
-    page_idx: usize,
-    elements: &[&StructElement],
-    violations: &mut Vec<Violation>,
-) {
-    // UA-007: All content tagged
-    // Heuristic: if page has chars AND structure elements, check MCID coverage.
-    // If page has chars but no structure elements at all, that's untagged content.
-    if !page.chars().is_empty() && elements.is_empty() {
-        violations.push(
-            Violation::new(
-                "UA-007",
-                Severity::Error,
-                format!(
-                    "Page {} has text content with no structure elements",
-                    page_idx + 1
-                ),
-            )
-            .on_page(page_idx)
-            .with_suggestion("Tag all text content with appropriate structure elements"),
-        );
-    }
-
-    // UA-010: Links must have accessible text
-    for link in page.hyperlinks() {
-        // A link is accessible if it has visible text chars overlapping its bbox.
-        let link_bbox = link.bbox;
-        let has_text = page.chars().iter().any(|c| {
-            let cb = &c.bbox;
-            cb.x0 >= link_bbox.x0 - 2.0
-                && cb.x1 <= link_bbox.x1 + 2.0
-                && cb.top >= link_bbox.top - 2.0
-                && cb.bottom <= link_bbox.bottom + 2.0
-        });
-        if !has_text {
-            violations.push(
-                Violation::new(
-                    "UA-010",
-                    Severity::Warning,
-                    format!(
-                        "Link on page {} at ({:.1},{:.1})-({:.1},{:.1}) has no visible text",
-                        page_idx + 1,
-                        link_bbox.x0,
-                        link_bbox.top,
-                        link_bbox.x1,
-                        link_bbox.bottom
-                    ),
-                )
-                .on_page(page_idx)
-                .with_suggestion(
-                    "Add /Alt text to the link annotation or ensure it overlaps visible text",
-                ),
-            );
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
+    use pdfplumber_core::StructElement;
+
     use super::*;
+    use crate::checkers::{check_structure_tree, is_standard_role};
 
     #[test]
     fn severity_ordering() {
